@@ -181,6 +181,11 @@ export async function handler(event, context) {
     }
 
     // Health check if accessed directly in browser
+    const hasFbToken = Boolean(process.env.FB_PAGE_ACCESS_TOKEN && process.env.FB_PAGE_ACCESS_TOKEN.length > 20);
+    const hasVerifyToken = Boolean(process.env.FB_VERIFY_TOKEN);
+    const rawKeys = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+    const keyCount = rawKeys.split(',').map(k => k.trim()).filter(Boolean).length;
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -188,7 +193,12 @@ export async function handler(event, context) {
         status: 'online',
         service: 'Aura AI Girlfriend Facebook Messenger Serverless Webhook',
         standalone: true,
-        cloud: 'Netlify'
+        cloud: 'Netlify',
+        diagnostics: {
+          hasFbPageAccessToken: hasFbToken,
+          hasVerifyToken: hasVerifyToken,
+          geminiKeyCount: keyCount
+        }
       })
     };
   }
