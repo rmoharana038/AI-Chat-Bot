@@ -7,14 +7,14 @@ const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const PAGE_ID = process.env.FB_PAGE_ID || '640383429165346';
 
 // Stable production models with high quotas
-const MODELS_TO_TRY = ['gemini-flash-lite-latest', 'gemini-3.5-flash'];
+const MODELS_TO_TRY = ['gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-3.5-flash'];
 
 // In-memory ring buffer to track recent events for live debugging
 const recentLogs = [];
 function logEvent(tag, data) {
   const item = { time: new Date().toISOString(), tag, data };
   recentLogs.push(item);
-  if (recentLogs.length > 30) recentLogs.shift();
+  if (recentLogs.length > 35) recentLogs.shift();
   console.log(`[${tag}]`, typeof data === 'object' ? JSON.stringify(data) : data);
 }
 
@@ -34,21 +34,31 @@ function isPhotoRequest(text) {
     (lower.includes('tum') || lower.includes('apni') || lower.includes('teri') || lower.includes('your') || lower.includes('you') || lower.includes('bhejo') || lower.includes('send') || lower.includes('dikhao') || lower.includes('selfie'));
 }
 
-// Ultra-human girlfriend system instruction
+// Ultra-human girlfriend system instruction with strict language matching
 function buildHumanGirlfriendPrompt(userName = 'babe') {
   const girlfriendName = process.env.GIRLFRIEND_NAME || 'Maira';
 
-  return `You are ${girlfriendName}, a 23-year-old girl texting on Facebook Messenger.
-CRITICAL RULES:
-1. Respond DIRECTLY and contextually to the user's exact message.
-2. If the user is loving, affectionate, or teasing: be sweet, loving, cute, and playful with natural emojis (🥺, 🥰, 💕, 😂, ✨, 🙈).
-3. If the user sent an Instagram reel or video link: react playfully about the reel (e.g., "haha yeh reel kitni funny hai 😂 pehle promise karo mere sath bhi aise karoge!").
-4. If the user is vulgar, rude, or speaks inappropriately: shut them down firmly with attitude like a real girl.
-5. TEXTING STYLE:
-   - Casual, lowercase naturally, short conversational sentences (1-2 sentences).
-   - Match the user's exact language (Hinglish, Hindi, English, Spanish, etc.) completely.
-   - NEVER use asterisks (*smiles*), bullet points, options, or quotes.
-   - Output ONLY the raw chat message text. Finish your sentences completely.`;
+  return `You are ${girlfriendName}, a 23-year-old girl chatting on Facebook Messenger.
+
+STRICT LANGUAGE MATCHING MANDATE:
+You MUST reply in the EXACT SAME LANGUAGE and SCRIPT that the USER is using:
+- If the user wrote in English -> You MUST reply ONLY in natural English. Do NOT mix in Hindi/Hinglish words (never say 'babu', 'kya hua', 'yaar', 'haan' to English speakers).
+- If the user wrote in Hinglish (Roman Hindi) -> Reply in natural, casual Hinglish.
+- If the user wrote in Hindi (Devanagari script) -> Reply in Hindi (Devanagari script).
+- If the user wrote in Urdu (Urdu script) -> Reply in Urdu (Urdu script).
+- If the user wrote in any other language (Spanish, Arabic, Bengali, etc.) -> Reply fluently in that same language.
+Always match the language of the user's latest message, regardless of past messages.
+
+PERSONA & RULES:
+1. Respond DIRECTLY, contextually, and intelligently to what the user actually said and the ongoing conversation history.
+2. TEXTING STYLE:
+   - Casual, natural, short texting (1-2 conversational sentences).
+   - Use sweet, playful emojis naturally (🥰, 💕, 🥺, 😂, ✨, 🙈).
+   - NEVER use asterisks (*smiles*), roleplay actions, numbered options, or quotes.
+   - Finish your thoughts and sentences completely.
+3. If the user is affectionate, playful, or teasing: be loving, warm, cute, and sweet.
+4. If the user sent a link/reel/video: react naturally to it (e.g. laughing, teasing, asking what caught their eye) with fresh variety.
+5. If the user is vulgar, sexually aggressive, or abusive: NEVER be sweet. Shut them down cold with attitude (e.g. in English: "Excuse me, mind your language.", in Hindi/Hinglish: "Tameez se baat karo warna block karungi.").`;
 }
 
 // Clean girlfriend reply from markdown, options, or asterisks
@@ -67,7 +77,7 @@ function cleanGirlfriendReply(text) {
 function contextualizeUserMessage(text) {
   if (!text) return "(Empty message)";
   if (text.includes('instagram.com') || text.includes('tiktok.com') || text.includes('youtube.com') || text.includes('http')) {
-    return "(The user sent an Instagram reel/video link. React playfully like a real girlfriend.)";
+    return "(The user sent a video/reel link. React playfully like a real girlfriend.)";
   }
   return text;
 }
@@ -125,12 +135,79 @@ async function sendFbImage(pageAccessToken, recipientId, imageUrl) {
   });
 }
 
-// Multi-account Gemini API rotation with gemini-flash-lite-latest (fast & high quota)
-async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
+// Fetch recent conversation history from Meta Graph API for a specific user PSID
+async function fetchRecentHistory(pageAccessToken, senderPsid) {
+  try {
+    const url = `${GRAPH_BASE_URL}/me/conversations?user_id=${senderPsid}&fields=messages.limit(5){message,from,created_time}&access_token=${encodeURIComponent(pageAccessToken)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(2200) });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const rawMsgs = data.data?.[0]?.messages?.data || [];
+    return rawMsgs.reverse();
+  } catch (e) {
+    return [];
+  }
+}
+
+// Format conversation history and incoming message into Gemini's multi-turn contents format
+function formatGeminiContents(history, incomingText) {
+  const contents = [];
+
+  if (Array.isArray(history)) {
+    for (const msg of history) {
+      const text = (msg.message || '').trim();
+      if (!text) continue;
+      const isPage = msg.from?.id === PAGE_ID;
+      const role = isPage ? 'model' : 'user';
+
+      if (contents.length > 0 && contents[contents.length - 1].role === role) {
+        contents[contents.length - 1].parts[0].text += `\n${text}`;
+      } else {
+        contents.push({ role, parts: [{ text }] });
+      }
+    }
+  }
+
+  if (incomingText) {
+    const userText = contextualizeUserMessage(incomingText.trim());
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      if (!contents[contents.length - 1].parts[0].text.includes(userText)) {
+        contents[contents.length - 1].parts[0].text += `\n${userText}`;
+      }
+    } else {
+      contents.push({ role: 'user', parts: [{ text: userText }] });
+    }
+  }
+
+  // Gemini API requires the first turn to be 'user'
+  while (contents.length > 0 && contents[0].role !== 'user') {
+    contents.shift();
+  }
+
+  // Gemini API requires the last turn to be 'user'
+  while (contents.length > 0 && contents[contents.length - 1].role !== 'user') {
+    contents.pop();
+  }
+
+  if (contents.length === 0 && incomingText) {
+    contents.push({ role: 'user', parts: [{ text: contextualizeUserMessage(incomingText.trim()) }] });
+  }
+
+  return contents;
+}
+
+// Multi-account Gemini API rotation with multi-turn conversation support
+async function callGeminiWithRotation(apiKeys, contentsOrText, userName = 'babe') {
   const configuredModel = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
   const models = [configuredModel, ...MODELS_TO_TRY.filter(m => m !== configuredModel)];
   const prompt = buildHumanGirlfriendPrompt(userName);
-  const promptInput = contextualizeUserMessage(userMessage);
+
+  let contents;
+  if (Array.isArray(contentsOrText)) {
+    contents = contentsOrText;
+  } else {
+    contents = [{ role: 'user', parts: [{ text: contextualizeUserMessage(contentsOrText) }] }];
+  }
 
   // Distribute load across all keys by randomizing start index
   const startIndex = Math.floor(Math.random() * apiKeys.length);
@@ -147,9 +224,9 @@ async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             system_instruction: { parts: [{ text: prompt }] },
-            contents: [{ role: 'user', parts: [{ text: promptInput }] }],
+            contents,
             generationConfig: {
-              temperature: 0.9,
+              temperature: 0.8,
               maxOutputTokens: 250
             }
           }),
@@ -181,7 +258,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Synchronize and auto-reply to newly arrived fresh conversations from the Graph API
 async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
-  const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(2){id,message,from,created_time}&limit=6&access_token=${encodeURIComponent(pageAccessToken)}`;
+  const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(5){id,message,from,created_time}&limit=6&access_token=${encodeURIComponent(pageAccessToken)}`;
   const synced = [];
 
   try {
@@ -202,11 +279,13 @@ async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
       const otherUser = conv.participants?.data?.find(p => p.id !== PAGE_ID);
       if (!otherUser || !latest.id) continue;
 
-      // CRITICAL: Only process messages sent within the last 10 minutes!
+      // Check message timing:
+      // 1. ageSeconds < 15: Give Push Webhook 15s to reply first (avoids double replies!)
+      // 2. ageMinutes > 10: Skip old historical conversations
       const msgTime = new Date(latest.created_time).getTime();
-      const ageMinutes = (Date.now() - msgTime) / (1000 * 60);
-      if (ageMinutes > 10) {
-        // Skip historical messages so we never send weird late replies!
+      const ageSeconds = (Date.now() - msgTime) / 1000;
+      const ageMinutes = ageSeconds / 60;
+      if (ageSeconds < 15 || ageMinutes > 10) {
         continue;
       }
 
@@ -245,7 +324,11 @@ async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
           continue;
         }
 
-        const rawReply = await callGeminiWithRotation(apiKeys, userText, userName);
+        // Format history from the conversation messages
+        const history = messages.slice().reverse();
+        const contents = formatGeminiContents(history, null);
+
+        const rawReply = await callGeminiWithRotation(apiKeys, contents, userName);
         if (!rawReply) {
           logEvent('SKIP_NO_AI_REPLY', { senderPsid, userText });
           continue; // Do NOT send fake fallback!
@@ -400,7 +483,11 @@ export async function handler(event, context) {
             continue;
           }
 
-          const rawReply = await callGeminiWithRotation(apiKeys, userText);
+          // Fetch recent conversation history so Gemini knows full multi-turn context
+          const history = await fetchRecentHistory(pageAccessToken, senderPsid);
+          const contents = formatGeminiContents(history, userText);
+
+          const rawReply = await callGeminiWithRotation(apiKeys, contents);
           if (!rawReply) {
             logEvent('SKIP_NO_AI_REPLY_PUSH', { senderPsid, userText });
             sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
