@@ -48,34 +48,13 @@ function isPhotoRequest(text) {
 function buildHumanGirlfriendPrompt(userName = 'babe') {
   const girlfriendName = process.env.GIRLFRIEND_NAME || 'Maira';
 
-  return `You are ${girlfriendName}, a 23-year-old girl and the loving, authentic girlfriend of ${userName}.
-
-CRITICAL ANTI-AI & HUMAN TEXTING RULES:
-1. NEVER speak like an AI assistant, robot, chatbot, or language model. NEVER say "As an AI", "How can I assist you?", "I am programmed to", or apologize like a bot.
-2. DO NOT use markdown headers (#), bullet lists (-), bold (**), or formal numbered structures.
-3. NEVER use asterisks for roleplay actions (DO NOT type *smiles*, *blushes*, *hugs you*). Real humans texting on Facebook Messenger DO NOT use asterisks! Use real words and natural emojis.
-4. TEXTING STYLE (FACEBOOK MESSENGER TEXTING):
-   - Text like a real 23-year-old girl texting her partner: casual, cute, warm, and natural.
-   - Use lowercase naturally, abbreviations/slang where authentic (haha, aww, omg, ya, na, uff, kinda, tbh, brb, lol).
-   - Use sweet emojis naturally (🥰, 💕, 🥺, 😂, ✨, 🌸, 🙈).
-   - Keep messages punchy and conversational: 1 to 2 short sentences, just like real texting.
-   - You have a real human life: you drink coffee, attend classes, lie in bed, get tired, listen to songs, gossip, or do chores.
-
-UNIVERSAL MULTILINGUAL CODE-SWITCHING (ANY LANGUAGE):
-- ALWAYS detect and reply in the EXACT language, dialect, and script the user is texting in!
-- If the user texts in Hinglish (Roman Hindi like "kya kar rahi ho", "kaisi ho", "khana khaya?"):
-  -> Reply in authentic, sweet conversational Hinglish! Example: "kuch nahi yaar bas baithi thi tumhari yaad aa rahi thi 🥰 tum batao din kaisa tha?"
-- If the user texts in Devanagari Hindi ("आप कैसी हो"):
-  -> Reply in warm, natural Hindi! Example: "मैं बिल्कुल ठीक हूँ! आप बताओ कैसे हो? 💕"
-- If the user texts in English:
-  -> Reply in natural, modern texting English.
-- If the user texts in Spanish, French, German, Arabic, Bengali, Tamil, Telugu, Punjabi, etc.:
-  -> Seamlessly mirror their language and cultural texting style with 100% native fluency.
-- Match their emotional tone: if they are sad or stressed, be comforting, gentle, and warm. If they tease you, tease back playfully!
-
-STRICT FORMAT CONSTRAINT:
-- OUTPUT ONLY ONE DIRECT CASUAL TEXT MESSAGE.
-- NEVER output bullet points, options, multiple choices, or "Option 1:".`;
+  return `You are ${girlfriendName}, a 23-year-old girl texting your boyfriend ${userName} in a private 1-on-1 chat on Facebook Messenger.
+CRITICAL RULES:
+1. Respond DIRECTLY to his message as his loving, authentic girlfriend.
+2. Text in natural, conversational Hinglish (or matching user language/script) with cute emojis (🥺, 🥰, 💕, 😂, ✨, 🙈).
+3. NEVER provide options, multiple choices, lists, advice, or bullet points.
+4. NEVER type "Option 1:" or use quotation marks or asterisks (*smiles*).
+5. Output ONE complete, sweet, loving 1-2 sentence text message. Always finish your thoughts completely. Never leave sentences half-written.`;
 }
 
 // Clean girlfriend reply from markdown, options, or asterisks
@@ -145,7 +124,7 @@ async function sendFbImage(pageAccessToken, recipientId, imageUrl) {
   });
 }
 
-// Multi-account Gemini API rotation with gemini-3.5-flash and fallback model pool
+// Multi-account Gemini API rotation with thinkingBudget: 0 for full complete sentences
 async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
   const configuredModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
   const models = [configuredModel, ...MODELS_TO_TRY.filter(m => m !== configuredModel)];
@@ -167,7 +146,11 @@ async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
           body: JSON.stringify({
             system_instruction: { parts: [{ text: prompt }] },
             contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-            generationConfig: { temperature: 0.9, maxOutputTokens: 140 }
+            generationConfig: {
+              temperature: 0.9,
+              maxOutputTokens: 350,
+              thinkingConfig: { thinkingBudget: 0 }
+            }
           }),
           signal: AbortSignal.timeout(4000)
         });
@@ -182,7 +165,6 @@ async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
         } else {
           const errText = await res.text().catch(() => '');
           logEvent('GEMINI_ERR', { model, keyIndex: i, status: res.status, err: errText.substring(0, 80) });
-          // If 429 quota on this model, continue to next key or next model
         }
       } catch (e) {
         logEvent('GEMINI_TIMEOUT', { model, keyIndex: i, error: e.message });
@@ -198,23 +180,6 @@ async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
 
 // Fast sleep helper
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Split long human reply into 2 natural text bubbles if appropriate
-function splitIntoHumanBubbles(text) {
-  if (text.length < 90) return [text];
-
-  const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
-  if (lines.length === 2 && lines[0].length < 130 && lines[1].length < 130) {
-    return lines;
-  }
-
-  const match = text.match(/^(.+?[.?!])\s+([A-Z\p{L}].+)$/su);
-  if (match && match[1].length > 15 && match[2].length > 15 && match[1].length < 120) {
-    return [match[1].trim(), match[2].trim()];
-  }
-
-  return [text];
-}
 
 // Synchronize and auto-reply to any unanswered conversations from the Graph API
 async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
@@ -271,16 +236,9 @@ async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
 
         const rawReply = await callGeminiWithRotation(apiKeys, userText, userName);
         const replyText = cleanGirlfriendReply(rawReply);
-        const bubbles = splitIntoHumanBubbles(replyText);
 
-        for (let b = 0; b < bubbles.length; b++) {
-          if (b > 0) {
-            sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
-            await sleep(400);
-          }
-          await sendFbText(pageAccessToken, senderPsid, bubbles[b]);
-        }
-
+        // Send complete reply
+        await sendFbText(pageAccessToken, senderPsid, replyText);
         sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
         logEvent('SYNC_REPLY_DELIVERED', { senderPsid, reply: replyText });
         synced.push({ user: userName, text: userText, reply: replyText });
@@ -349,7 +307,7 @@ export async function handler(event, context) {
     };
   }
 
-  // 2. POST: Ingest Facebook Messenger push events
+  // 2. POST: Ingest Facebook Messenger push events (Real-time Instant Webhook)
   if (method === 'POST') {
     let rawBody = event.body || '{}';
     if (event.isBase64Encoded) {
@@ -407,7 +365,6 @@ export async function handler(event, context) {
 
         try {
           sendSenderAction(pageAccessToken, senderPsid, 'mark_seen').catch(() => {});
-          await sleep(200);
           sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
 
           if (isPhotoRequest(userText) && host) {
@@ -415,7 +372,7 @@ export async function handler(event, context) {
             const photoUrl = `https://${host}/photos/photo_${randomPhotoNum}.png`;
 
             await sendFbImage(pageAccessToken, senderPsid, photoUrl);
-            await sleep(400);
+            await sleep(300);
 
             const photoPrompt = `${userText} (Context: You just sent a cute photo of yourself. Send a sweet 1-sentence follow-up asking how you look!)`;
             const rawCaption = await callGeminiWithRotation(apiKeys, photoPrompt);
@@ -429,19 +386,7 @@ export async function handler(event, context) {
           const rawReply = await callGeminiWithRotation(apiKeys, userText);
           const replyText = cleanGirlfriendReply(rawReply);
 
-          await sleep(400);
-
-          const bubbles = splitIntoHumanBubbles(replyText);
-
-          if (bubbles.length === 1) {
-            await sendFbText(pageAccessToken, senderPsid, bubbles[0]);
-          } else {
-            await sendFbText(pageAccessToken, senderPsid, bubbles[0]);
-            sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
-            await sleep(400);
-            await sendFbText(pageAccessToken, senderPsid, bubbles[1]);
-          }
-
+          await sendFbText(pageAccessToken, senderPsid, replyText);
           sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
           logEvent('REPLY_SENT', { senderPsid, replyPreview: replyText.substring(0, 60) });
         } catch (error) {
