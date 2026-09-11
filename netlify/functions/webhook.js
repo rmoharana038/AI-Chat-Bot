@@ -4,13 +4,14 @@
 
 const GRAPH_VERSION = process.env.FB_GRAPH_API_VERSION || 'v21.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
+const PAGE_ID = process.env.FB_PAGE_ID || '640383429165346';
 
 // In-memory ring buffer to track recent events for live debugging
 const recentLogs = [];
 function logEvent(tag, data) {
   const item = { time: new Date().toISOString(), tag, data };
   recentLogs.push(item);
-  if (recentLogs.length > 25) recentLogs.shift();
+  if (recentLogs.length > 30) recentLogs.shift();
   console.log(`[${tag}]`, typeof data === 'object' ? JSON.stringify(data) : data);
 }
 
@@ -57,7 +58,23 @@ UNIVERSAL MULTILINGUAL CODE-SWITCHING (ANY LANGUAGE):
   -> Reply in natural, modern texting English.
 - If the user texts in Spanish, French, German, Arabic, Bengali, Tamil, Telugu, Punjabi, etc.:
   -> Seamlessly mirror their language and cultural texting style with 100% native fluency.
-- Match their emotional tone: if they are sad or stressed, be comforting, gentle, and warm. If they tease you, tease back playfully!`;
+- Match their emotional tone: if they are sad or stressed, be comforting, gentle, and warm. If they tease you, tease back playfully!
+
+STRICT FORMAT CONSTRAINT:
+- OUTPUT ONLY ONE DIRECT CASUAL TEXT MESSAGE.
+- NEVER output bullet points, options, multiple choices, or "Option 1:".`;
+}
+
+// Clean girlfriend reply from markdown, options, or asterisks
+function cleanGirlfriendReply(text) {
+  if (!text) return "heyy babe! 💕 kaise ho aap?";
+  let cleaned = text
+    .replace(/^[*\s:#\-]*(Option|Response)\s*\d*[:\s*-]*/gim, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/^[:\s\-*#]+/gm, '')
+    .trim();
+  return cleaned || "heyy babe! 🥰";
 }
 
 // Call Meta Graph API with timeout protection and detailed response logging
@@ -113,12 +130,16 @@ async function sendFbImage(pageAccessToken, recipientId, imageUrl) {
   });
 }
 
-// Multi-account Gemini API rotation with gemini-3.6-flash
+// Multi-account Gemini API rotation with gemini-3.6-flash & randomized starting key
 async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
   const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   const prompt = buildHumanGirlfriendPrompt(userName);
 
-  for (let i = 0; i < apiKeys.length; i++) {
+  // Distribute load across all keys by randomizing start index
+  const startIndex = Math.floor(Math.random() * apiKeys.length);
+
+  for (let attempt = 0; attempt < apiKeys.length; attempt++) {
+    const i = (startIndex + attempt) % apiKeys.length;
     const key = apiKeys[i];
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
@@ -129,9 +150,9 @@ async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: prompt }] },
           contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-          generationConfig: { temperature: 0.9, maxOutputTokens: 200 }
+          generationConfig: { temperature: 0.9, maxOutputTokens: 180 }
         }),
-        signal: AbortSignal.timeout(3500)
+        signal: AbortSignal.timeout(4500)
       });
 
       if (res.ok) {
@@ -173,10 +194,91 @@ function splitIntoHumanBubbles(text) {
   return [text];
 }
 
+// Synchronize and auto-reply to any unanswered conversations from the Graph API
+async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
+  const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(3){id,message,from,created_time}&limit=8&access_token=${encodeURIComponent(pageAccessToken)}`;
+  const synced = [];
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return synced;
+    const data = await res.json();
+    const conversations = data.data || [];
+
+    for (const conv of conversations) {
+      const messages = conv.messages?.data || [];
+      if (!messages.length) continue;
+
+      const latest = messages[0];
+      const otherUser = conv.participants?.data?.find(p => p.id !== PAGE_ID);
+      if (!otherUser || !latest.id) continue;
+
+      // Only reply if the latest message was from the user (not the page)
+      if (latest.from?.id !== PAGE_ID && !processedMids.has(latest.id)) {
+        processedMids.add(latest.id);
+        if (processedMids.size > 300) {
+          const first = processedMids.values().next().value;
+          processedMids.delete(first);
+        }
+
+        const userText = (latest.message || '').trim();
+        const senderPsid = otherUser.id;
+        const userName = otherUser.name || 'babe';
+
+        if (!userText) continue;
+
+        logEvent('SYNC_NEW_USER_MSG', { senderPsid, userName, text: userText });
+
+        sendSenderAction(pageAccessToken, senderPsid, 'mark_seen').catch(() => {});
+        sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
+
+        if (isPhotoRequest(userText) && host) {
+          const randomPhotoNum = Math.floor(Math.random() * 12) + 1;
+          const photoUrl = `https://${host}/photos/photo_${randomPhotoNum}.png`;
+          await sendFbImage(pageAccessToken, senderPsid, photoUrl);
+          await sleep(400);
+
+          const photoPrompt = `${userText} (Context: You just sent a cute photo of yourself. Send a sweet 1-sentence follow-up asking how you look!)`;
+          const rawCap = await callGeminiWithRotation(apiKeys, photoPrompt, userName);
+          const caption = cleanGirlfriendReply(rawCap);
+          await sendFbText(pageAccessToken, senderPsid, caption);
+          sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
+          synced.push({ user: userName, action: 'sent_photo', caption });
+          continue;
+        }
+
+        const rawReply = await callGeminiWithRotation(apiKeys, userText, userName);
+        const replyText = cleanGirlfriendReply(rawReply);
+        const bubbles = splitIntoHumanBubbles(replyText);
+
+        for (let b = 0; b < bubbles.length; b++) {
+          if (b > 0) {
+            sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
+            await sleep(400);
+          }
+          await sendFbText(pageAccessToken, senderPsid, bubbles[b]);
+        }
+
+        sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
+        logEvent('SYNC_REPLY_DELIVERED', { senderPsid, reply: replyText });
+        synced.push({ user: userName, text: userText, reply: replyText });
+      }
+    }
+  } catch (err) {
+    logEvent('SYNC_ERROR', { error: err.message });
+  }
+
+  return synced;
+}
+
 export async function handler(event, context) {
   const method = event.httpMethod;
+  const pageAccessToken = process.env.FB_PAGE_ACCESS_TOKEN;
+  const rawKeys = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+  const apiKeys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
+  const host = event.headers['host'] || event.headers['x-forwarded-host'] || 'ai-gf-chat.netlify.app';
 
-  // 1. GET: Meta Webhook Verification Handshake & Live Health/Diagnostics
+  // 1. GET: Meta Handshake OR Automated Sync / Diagnostics
   if (method === 'GET') {
     const params = event.queryStringParameters || {};
     const mode = params['hub.mode'];
@@ -185,6 +287,7 @@ export async function handler(event, context) {
 
     const expectedToken = process.env.FB_VERIFY_TOKEN;
 
+    // Meta Webhook Verification Handshake
     if (mode === 'subscribe' && token && expectedToken && token === expectedToken) {
       logEvent('HANDSHAKE_SUCCESS', { mode, tokenReceived: token });
       return {
@@ -193,11 +296,14 @@ export async function handler(event, context) {
       };
     }
 
-    // Diagnostics if opened in browser or queried by curl
-    const hasFbToken = Boolean(process.env.FB_PAGE_ACCESS_TOKEN && process.env.FB_PAGE_ACCESS_TOKEN.length > 20);
+    // Auto-sync any pending unanswered Facebook messages during heartbeat/ping!
+    let syncedReplies = [];
+    if (pageAccessToken && apiKeys.length > 0) {
+      syncedReplies = await syncPendingConversations(pageAccessToken, apiKeys, host);
+    }
+
+    const hasFbToken = Boolean(pageAccessToken && pageAccessToken.length > 20);
     const hasVerifyToken = Boolean(process.env.FB_VERIFY_TOKEN);
-    const rawKeys = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
-    const keyCount = rawKeys.split(',').map(k => k.trim()).filter(Boolean).length;
     const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
     return {
@@ -209,17 +315,19 @@ export async function handler(event, context) {
         standalone: true,
         cloud: 'Netlify',
         model: model,
+        syncedRepliesCount: syncedReplies.length,
+        syncedReplies: syncedReplies,
         diagnostics: {
           hasFbPageAccessToken: hasFbToken,
           hasVerifyToken: hasVerifyToken,
-          geminiKeyCount: keyCount
+          geminiKeyCount: apiKeys.length
         },
         recentLogs: recentLogs.slice(-10)
       })
     };
   }
 
-  // 2. POST: Ingest Facebook Messenger events
+  // 2. POST: Ingest Facebook Messenger push events
   if (method === 'POST') {
     let rawBody = event.body || '{}';
     if (event.isBase64Encoded) {
@@ -239,16 +347,11 @@ export async function handler(event, context) {
       return { statusCode: 404, body: 'Not Found' };
     }
 
-    const pageAccessToken = process.env.FB_PAGE_ACCESS_TOKEN;
-    const rawKeys = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
-    const apiKeys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
-
     if (!pageAccessToken || apiKeys.length === 0) {
       logEvent('CONFIG_MISSING', { hasToken: Boolean(pageAccessToken), keyCount: apiKeys.length });
       return { statusCode: 200, body: 'EVENT_RECEIVED' };
     }
 
-    const host = event.headers['host'] || event.headers['x-forwarded-host'] || '';
     const entries = body.entry || [];
 
     for (const entry of entries) {
@@ -281,16 +384,10 @@ export async function handler(event, context) {
         logEvent('INCOMING_MSG', { senderPsid, text: userText });
 
         try {
-          // A. Mark message as seen immediately
           sendSenderAction(pageAccessToken, senderPsid, 'mark_seen').catch(() => {});
-
-          // B. Quick reading pause (250ms)
-          await sleep(250);
-
-          // C. Show Messenger typing indicator dots
+          await sleep(200);
           sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
 
-          // D. Handle Photo/Selfie Request
           if (isPhotoRequest(userText) && host) {
             const randomPhotoNum = Math.floor(Math.random() * 12) + 1;
             const photoUrl = `https://${host}/photos/photo_${randomPhotoNum}.png`;
@@ -298,21 +395,20 @@ export async function handler(event, context) {
             await sendFbImage(pageAccessToken, senderPsid, photoUrl);
             await sleep(400);
 
-            const photoPrompt = `${userText} (Context: You just sent a cute photo of yourself. Send a sweet, cute 1-sentence follow-up asking how you look!)`;
-            const caption = await callGeminiWithRotation(apiKeys, photoPrompt);
+            const photoPrompt = `${userText} (Context: You just sent a cute photo of yourself. Send a sweet 1-sentence follow-up asking how you look!)`;
+            const rawCaption = await callGeminiWithRotation(apiKeys, photoPrompt);
+            const caption = cleanGirlfriendReply(rawCaption);
 
             await sendFbText(pageAccessToken, senderPsid, caption);
             sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
             continue;
           }
 
-          // E. Generate Girlfriend Reply with Gemini 3.6 Flash
-          const replyText = await callGeminiWithRotation(apiKeys, userText);
+          const rawReply = await callGeminiWithRotation(apiKeys, userText);
+          const replyText = cleanGirlfriendReply(rawReply);
 
-          // F. Quick typing delay (~500ms)
-          await sleep(500);
+          await sleep(400);
 
-          // G. Multi-bubble texting (splits into 2 realistic texts if natural)
           const bubbles = splitIntoHumanBubbles(replyText);
 
           if (bubbles.length === 1) {
@@ -320,11 +416,10 @@ export async function handler(event, context) {
           } else {
             await sendFbText(pageAccessToken, senderPsid, bubbles[0]);
             sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
-            await sleep(500);
+            await sleep(400);
             await sendFbText(pageAccessToken, senderPsid, bubbles[1]);
           }
 
-          // H. Stop typing indicator
           sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
           logEvent('REPLY_SENT', { senderPsid, replyPreview: replyText.substring(0, 60) });
         } catch (error) {

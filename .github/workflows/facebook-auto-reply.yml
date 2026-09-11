@@ -1,0 +1,16 @@
+name: 24/7 Facebook AI Girlfriend Auto-Reply Keepalive
+
+on:
+  schedule:
+    # Run every 5 minutes around the clock
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-webhook:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Netlify Webhook & Sync Pending Facebook Messages
+        run: |
+          echo 'Syncing Facebook Messenger Auto-Reply...'
+          curl -s -f 'https://ai-gf-chat.netlify.app/webhook' || true
