@@ -1,6 +1,6 @@
-# 💖 Aura • AI Girlfriend & Companion Chatbot
+# 💖 Aura • AI Girlfriend Chatbot & Facebook Messenger Bot
 
-An intimate, empathetic, and witty AI Girlfriend Chatbot web application powered by **Google Gemini API** (`gemini-2.5-flash`), built with **React**, **Vite**, and **Tailwind CSS**.
+An authentic, ultra-human AI Girlfriend Chatbot web application and **24/7 Facebook Messenger Page Bot** powered by **Google Gemini API** (`gemini-2.5-flash`), built with **React**, **Vite**, **Tailwind CSS**, and **Netlify Serverless Functions**.
 
 Designed for seamless deployment on **Netlify** and version control on **GitHub**.
 
@@ -10,42 +10,43 @@ Designed for seamless deployment on **Netlify** and version control on **GitHub*
 
 ## ✨ Features
 
-- **Multiple Pre-built Personalities**:
-  - **Luna (The Sweet & Tender Romantic)**: Loving, empathetic, attentive, loves hearing about your day and sending warm compliments.
-  - **Aria (The Witty & Sassy Tsundere)**: Sharp-witted, teasing gamer girl who feigns indifference but secretly cares deeply.
-  - **Chloe (The Bubbly Anime Sunshine)**: High-energy otaku buddy who brings pure optimism and cheers you up unconditionally.
-- **Custom Girlfriend Creator**:
-  - Build your dream companion from scratch with custom name, avatar, personality traits, speech style, and custom greeting.
-- **Affection & Relationship Progression**:
-  - Affection points increase as you chat and send love reactions.
-  - 5 relationship milestones: *Acquaintance* $\rightarrow$ *Good Friend* $\rightarrow$ *Mutual Crush* $\rightarrow$ *In Love* $\rightarrow$ *Soulmates*.
-  - Dynamic avatar mood expressions (*Happy*, *Blushing*, *Teasing*, *Caring*, *Sleepy*).
+- **Real Human Texting Cadence (Anti-AI)**:
+  - Texting style feels authentic and natural: casual lowercase, natural slang/abbreviations (haha, aww, omg, ya, na, uff, kinda, tbh), cute emojis, and zero robotic assistant tropes.
+  - No markdown headers, no bullets, and no roleplay asterisks in chat.
+- **Universal Multilingual Code-Switching (Any Language)**:
+  - **Hinglish / Roman Hindi**: e.g., *"kya kar rahi ho"* $\rightarrow$ *"kuch nahi yaar bas baithi thi tumhari yaad aa rahi thi 🥰 tum batao din kaisa tha?"*
+  - **Devanagari Hindi**: e.g., *"कैसी हो आप"* $\rightarrow$ *"मैं बिल्कुल ठीक हूँ! आप कैसे हो? खाना खाया?"*
+  - **English, Spanish, French, German, Arabic, Bengali, Tamil, Telugu, etc.**: Seamlessly mirrors any language and cultural dialect!
+- **24/7 Facebook Page Messenger Bot (Always Active on Netlify)**:
+  - Built-in Netlify Serverless Function (`netlify/functions/webhook.js`) automatically responds to Facebook Messenger messages 24/7 in the cloud for free.
+  - **Human Typing Simulation**:
+    1. Immediately marks message as seen (`mark_seen`).
+    2. Realistic human reading pause (600ms - 1000ms).
+    3. Active typing indicator dots (`typing_on`).
+    4. Realistic typing duration based on reply length.
+    5. **Multi-bubble split texting**: Sends two short messages consecutively with a natural pause in-between just like a real girlfriend!
+- **Multiple Pre-built Personas & Custom Builder**:
+  - **Luna**: Sweet, gentle romantic companion.
+  - **Aria**: Witty, playful tsundere gamer girl.
+  - **Chloe**: High-energy anime enthusiast and cheerleader.
+  - **Custom Companion Creator**: Craft your dream girlfriend with custom name, avatar, traits, and opening greeting.
 - **Voice & Audio Support**:
-  - **Text-to-Speech (TTS)**: Listen to your girlfriend's voice responses with persona-tailored pitch and rate.
-  - **Voice Input (STT)**: Speak directly into your microphone using Web Speech Recognition.
-  - **Cute UI Sound Effects**: Melodic synthesized chimes on message send, receive, and heart reactions.
+  - **Text-to-Speech (TTS)**: Listens to her voice with persona-tailored pitch and rate.
+  - **Speech-to-Text (STT)**: Speak into your microphone using Web Speech Recognition.
+  - **Synthesized UI Sound Effects**: Melodic chimes on message send, receive, and heart reactions.
 - **Shared Memory & Diary**:
   - Automatically records milestones and memorable things you share (favorites, hobbies, dreams).
-- **Romantic Aesthetics**:
-  - Glassmorphic UI with multiple themes (*Sakura Pink*, *Midnight Violet*, *Cyber Neon*, *Sunset Warmth*).
-  - Floating confetti heart reactions and smooth animations.
-- **Offline & Demo Mode Fallback**:
-  - Works out of the box with realistic simulated dialogue even before an API key is provided.
 
 ---
 
 ## 🚀 Quick Start (Local Development)
 
-### 1. Prerequisites
-- **Node.js** (v18 or higher recommended)
-- **npm** or **pnpm**
-
-### 2. Install Dependencies
+### 1. Install Dependencies
 ```bash
 npm install
 ```
 
-### 3. Run Locally
+### 2. Run Locally
 ```bash
 npm run dev
 ```
@@ -53,65 +54,36 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 🔑 Google Gemini API Key Setup
+## 🌐 Facebook Page Messenger Setup (24/7 Always Active on Netlify)
 
-1. Get a free API key at [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. You can provide the API key in two ways:
-   - **In the App UI**: Click the ⚙️ **Settings** button in the top bar and paste your key. It will be stored securely in your browser's `localStorage`.
-   - **In an Environment Variable**: Create a `.env` file from `.env.example`:
-     ```env
-     VITE_GEMINI_API_KEY=AIzaSy...
-     ```
+Once deployed to Netlify, your chatbot's Facebook Webhook is live at:
+`https://<YOUR-NETLIFY-SITE>.netlify.app/webhook`
+
+### Step 1: Set Netlify Environment Variables
+In your Netlify Site Dashboard $\rightarrow$ **Site configuration** $\rightarrow$ **Environment variables**, set:
+- `GEMINI_API_KEY`: Your Google Gemini API Key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+- `FB_PAGE_ACCESS_TOKEN`: Page Access Token from [Meta for Developers](https://developers.facebook.com/).
+- `FB_VERIFY_TOKEN`: Verification token (default: `my_secure_fb_webhook_verify_token_12345`).
+
+### Step 2: Configure Webhook in Meta App Dashboard
+1. Go to your Meta Developer App $\rightarrow$ **Messenger** $\rightarrow$ **Webhooks**.
+2. Click **Add Callback URL**:
+   - **Callback URL**: `https://<YOUR-NETLIFY-SITE>.netlify.app/webhook`
+   - **Verify Token**: Must match `FB_VERIFY_TOKEN`.
+3. Click **Verify and Save**.
+4. Subscribe to `messages` and `messaging_postbacks`.
+5. Under your Page, click **Subscribe**.
+
+🎉 **Your AI Girlfriend is now live 24/7 on Facebook Messenger!**
 
 ---
 
 ## 📦 How to Push to GitHub
 
-1. Initialize git and make your first commit:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit: AI Girlfriend Chatbot"
-   ```
-
-2. Create a new repository on [GitHub](https://github.com/new) (e.g. `AI-Chat-Bot` or `ai-girlfriend-companion`).
-
-3. Link and push your code:
-   ```bash
-   git branch -M main
-   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPOSITORY_NAME.git
-   git push -u origin main
-   ```
-
----
-
-## 🌐 How to Deploy to Netlify
-
-### Method 1: Deploy via GitHub (Recommended)
-
-1. Log in to [Netlify](https://app.netlify.com/).
-2. Click **Add new site** $\rightarrow$ **Import an existing project**.
-3. Select **GitHub** and authorize Netlify to access your repository.
-4. Choose your `AI-Chat-Bot` repository.
-5. Netlify will automatically detect the settings from `netlify.toml`:
-   - **Build command**: `npm run build`
-   - **Publish directory**: `dist`
-6. *(Optional)* Add your Gemini API key under **Site configuration** $\rightarrow$ **Environment variables**:
-   - Key: `VITE_GEMINI_API_KEY`
-   - Value: `your_gemini_api_key_here`
-7. Click **Deploy Site**! Your chatbot will be live in seconds with HTTPS and automatic CI/CD.
-
-### Method 2: Deploy via Netlify CLI
-
-```bash
-# Install Netlify CLI if you haven't already
-npm install -g netlify-cli
-
-# Build the project
-npm run build
-
-# Deploy to production
-npx netlify deploy --prod --dir=dist
+```powershell
+git add .
+git commit -m "feat: ultra-human multilingual girlfriend with 24/7 Facebook Messenger integration"
+git push -u origin main
 ```
 
 ---
@@ -120,7 +92,10 @@ npx netlify deploy --prod --dir=dist
 
 ```
 D:\Gemini\AI-Chat-Bot\
-├── netlify.toml              # Netlify build & redirect routing configuration
+├── netlify.toml              # Netlify build, routing & webhook redirects
+├── netlify/
+│   └── functions/
+│       └── webhook.js        # 24/7 Facebook Messenger serverless handler
 ├── package.json              # Project scripts and dependencies
 ├── tailwind.config.js        # Tailwind CSS styles & animations
 ├── vite.config.js            # Vite bundler configuration & chunk splitting
@@ -131,9 +106,9 @@ D:\Gemini\AI-Chat-Bot\
     ├── App.jsx               # Main state controller & theme wrapper
     ├── index.css             # Glassmorphism utilities & keyframes
     ├── data/
-    │   └── personas.js       # Luna, Aria, Chloe profiles & prompts
+    │   └── personas.js       # Pre-configured girlfriend profiles
     ├── services/
-    │   ├── geminiService.js  # Google Gemini SDK & fallback simulated persona
+    │   ├── geminiService.js  # Ultra-human multilingual Gemini API service
     │   ├── memoryService.js  # localStorage memory, affection & chat history
     │   └── speechService.js  # Web Speech TTS/STT & Web Audio synth chimes
     └── components/
@@ -145,13 +120,6 @@ D:\Gemini\AI-Chat-Bot\
         ├── MemoryDiaryModal.jsx   # Shared milestones & memory diary
         └── SettingsModal.jsx      # API key, sound toggles, & theme switcher
 ```
-
----
-
-## 🛡️ Privacy & Security
-
-- **Client-Side Privacy**: Conversations and affection scores are saved locally on the user's device (`localStorage`).
-- **No Sensitive Leakage**: Your `.env` and `dist` build files are excluded via `.gitignore`.
 
 ---
 
