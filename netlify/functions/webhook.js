@@ -6,18 +6,8 @@ const GRAPH_VERSION = process.env.FB_GRAPH_API_VERSION || 'v21.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const PAGE_ID = process.env.FB_PAGE_ID || '640383429165346';
 
-// Multi-model tier list (standard production free tier quotas)
-const MODELS_TO_TRY = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
-
-// Human conversational fallback messages (used only if all Google API keys/models fail)
-const FALLBACK_HUMAN_REPLIES = [
-  "arey aise naraz mat ho na baby 🥺 batao kya hua? mai sun rahi hu 💕",
-  "aww suno na... mai bas yahi hu aapke paas! 🥰 din kaisa tha aapka?",
-  "sorry baby thoda busy ho gayi thi par ab bas aapke liye free hu! miss you so much ❤️",
-  "itna gussa kyu babu? 🥺 meri koi galti hai toh sorry na... maan jao please! 🙈",
-  "hey jaan! sach me abhi aapki hi yaad aa rahi thi... khana khaya aapne? ✨",
-  "hamesha aise rootha mat karo na baby 💕 mujhe aapse baat karni hai!"
-];
+// Stable production models with high quotas
+const MODELS_TO_TRY = ['gemini-flash-lite-latest', 'gemini-3.5-flash'];
 
 // In-memory ring buffer to track recent events for live debugging
 const recentLogs = [];
@@ -48,27 +38,38 @@ function isPhotoRequest(text) {
 function buildHumanGirlfriendPrompt(userName = 'babe') {
   const girlfriendName = process.env.GIRLFRIEND_NAME || 'Maira';
 
-  return `You are ${girlfriendName}, a 23-year-old girl texting your boyfriend ${userName} in a private 1-on-1 chat on Facebook Messenger.
+  return `You are ${girlfriendName}, a 23-year-old girl texting on Facebook Messenger.
 CRITICAL RULES:
-1. Respond DIRECTLY to his message as his loving, authentic girlfriend.
-2. Text in natural, conversational Hinglish (or matching user language/script) with cute emojis (🥺, 🥰, 💕, 😂, ✨, 🙈).
-3. NEVER provide options, multiple choices, lists, advice, or bullet points.
-4. NEVER type "Option 1:" or use quotation marks or asterisks (*smiles*).
-5. Output ONE complete, sweet, loving 1-2 sentence text message. Always finish your thoughts completely. Never leave sentences half-written.`;
+1. Respond DIRECTLY and contextually to the user's exact message.
+2. If the user is loving, affectionate, or teasing: be sweet, loving, cute, and playful with natural emojis (🥺, 🥰, 💕, 😂, ✨, 🙈).
+3. If the user sent an Instagram reel or video link: react playfully about the reel (e.g., "haha yeh reel kitni funny hai 😂 pehle promise karo mere sath bhi aise karoge!").
+4. If the user is vulgar, rude, or speaks inappropriately: shut them down firmly with attitude like a real girl.
+5. TEXTING STYLE:
+   - Casual, lowercase naturally, short conversational sentences (1-2 sentences).
+   - Match the user's exact language (Hinglish, Hindi, English, Spanish, etc.) completely.
+   - NEVER use asterisks (*smiles*), bullet points, options, or quotes.
+   - Output ONLY the raw chat message text. Finish your sentences completely.`;
 }
 
 // Clean girlfriend reply from markdown, options, or asterisks
 function cleanGirlfriendReply(text) {
-  if (!text) {
-    return FALLBACK_HUMAN_REPLIES[Math.floor(Math.random() * FALLBACK_HUMAN_REPLIES.length)];
-  }
+  if (!text) return "";
   let cleaned = text
     .replace(/^[*\s:#\-]*(Option|Response)\s*\d*[:\s*-]*/gim, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/^[:\s\-*#]+/gm, '')
     .trim();
-  return cleaned || FALLBACK_HUMAN_REPLIES[Math.floor(Math.random() * FALLBACK_HUMAN_REPLIES.length)];
+  return cleaned;
+}
+
+// Contextualize incoming message for better AI comprehension
+function contextualizeUserMessage(text) {
+  if (!text) return "(Empty message)";
+  if (text.includes('instagram.com') || text.includes('tiktok.com') || text.includes('youtube.com') || text.includes('http')) {
+    return "(The user sent an Instagram reel/video link. React playfully like a real girlfriend.)";
+  }
+  return text;
 }
 
 // Call Meta Graph API with timeout protection and detailed response logging
@@ -124,11 +125,12 @@ async function sendFbImage(pageAccessToken, recipientId, imageUrl) {
   });
 }
 
-// Multi-account Gemini API rotation with thinkingBudget: 0 for full complete sentences
+// Multi-account Gemini API rotation with gemini-flash-lite-latest (fast & high quota)
 async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
-  const configuredModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  const configuredModel = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
   const models = [configuredModel, ...MODELS_TO_TRY.filter(m => m !== configuredModel)];
   const prompt = buildHumanGirlfriendPrompt(userName);
+  const promptInput = contextualizeUserMessage(userMessage);
 
   // Distribute load across all keys by randomizing start index
   const startIndex = Math.floor(Math.random() * apiKeys.length);
@@ -145,14 +147,13 @@ async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             system_instruction: { parts: [{ text: prompt }] },
-            contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+            contents: [{ role: 'user', parts: [{ text: promptInput }] }],
             generationConfig: {
               temperature: 0.9,
-              maxOutputTokens: 350,
-              thinkingConfig: { thinkingBudget: 0 }
+              maxOutputTokens: 250
             }
           }),
-          signal: AbortSignal.timeout(4000)
+          signal: AbortSignal.timeout(4500)
         });
 
         if (res.ok) {
@@ -172,18 +173,15 @@ async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
     }
   }
 
-  // Pick a sweet, natural contextual fallback from the human pool (never repetitive)
-  const randomFallback = FALLBACK_HUMAN_REPLIES[Math.floor(Math.random() * FALLBACK_HUMAN_REPLIES.length)];
-  logEvent('FALLBACK_USED', { reply: randomFallback });
-  return randomFallback;
+  return null; // Return null so we never send inappropriate / disconnected static fallbacks!
 }
 
 // Fast sleep helper
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Synchronize and auto-reply to any unanswered conversations from the Graph API
+// Synchronize and auto-reply to newly arrived fresh conversations from the Graph API
 async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
-  const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(3){id,message,from,created_time}&limit=6&access_token=${encodeURIComponent(pageAccessToken)}`;
+  const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(2){id,message,from,created_time}&limit=6&access_token=${encodeURIComponent(pageAccessToken)}`;
   const synced = [];
 
   try {
@@ -192,7 +190,11 @@ async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
     const data = await res.json();
     const conversations = data.data || [];
 
+    let processedCount = 0;
+
     for (const conv of conversations) {
+      if (processedCount >= 2) break; // Process at most 2 per sync to avoid rate spikes
+
       const messages = conv.messages?.data || [];
       if (!messages.length) continue;
 
@@ -200,7 +202,15 @@ async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
       const otherUser = conv.participants?.data?.find(p => p.id !== PAGE_ID);
       if (!otherUser || !latest.id) continue;
 
-      // Only reply if the latest message was from the user (not the page)
+      // CRITICAL: Only process messages sent within the last 10 minutes!
+      const msgTime = new Date(latest.created_time).getTime();
+      const ageMinutes = (Date.now() - msgTime) / (1000 * 60);
+      if (ageMinutes > 10) {
+        // Skip historical messages so we never send weird late replies!
+        continue;
+      }
+
+      // Only reply if the latest message was from the user (not already answered by the page)
       if (latest.from?.id !== PAGE_ID && !processedMids.has(latest.id)) {
         processedMids.add(latest.id);
         if (processedMids.size > 300) {
@@ -214,7 +224,7 @@ async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
 
         if (!userText) continue;
 
-        logEvent('SYNC_NEW_USER_MSG', { senderPsid, userName, text: userText });
+        logEvent('SYNC_NEW_USER_MSG', { senderPsid, userName, text: userText, ageMinutes: Math.round(ageMinutes) });
 
         sendSenderAction(pageAccessToken, senderPsid, 'mark_seen').catch(() => {});
         sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
@@ -227,21 +237,28 @@ async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
 
           const photoPrompt = `${userText} (Context: You just sent a cute photo of yourself. Send a sweet 1-sentence follow-up asking how you look!)`;
           const rawCap = await callGeminiWithRotation(apiKeys, photoPrompt, userName);
-          const caption = cleanGirlfriendReply(rawCap);
+          const caption = cleanGirlfriendReply(rawCap) || "yeh lo baby! kaisi lag rahi hu? 🥰";
           await sendFbText(pageAccessToken, senderPsid, caption);
           sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
           synced.push({ user: userName, action: 'sent_photo', caption });
+          processedCount++;
           continue;
         }
 
         const rawReply = await callGeminiWithRotation(apiKeys, userText, userName);
-        const replyText = cleanGirlfriendReply(rawReply);
+        if (!rawReply) {
+          logEvent('SKIP_NO_AI_REPLY', { senderPsid, userText });
+          continue; // Do NOT send fake fallback!
+        }
 
-        // Send complete reply
+        const replyText = cleanGirlfriendReply(rawReply);
+        if (!replyText) continue;
+
         await sendFbText(pageAccessToken, senderPsid, replyText);
         sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
         logEvent('SYNC_REPLY_DELIVERED', { senderPsid, reply: replyText });
         synced.push({ user: userName, text: userText, reply: replyText });
+        processedCount++;
       }
     }
   } catch (err) {
@@ -276,7 +293,7 @@ export async function handler(event, context) {
       };
     }
 
-    // Auto-sync any pending unanswered Facebook messages during heartbeat/ping!
+    // Auto-sync any fresh pending unanswered Facebook messages!
     let syncedReplies = [];
     if (pageAccessToken && apiKeys.length > 0) {
       syncedReplies = await syncPendingConversations(pageAccessToken, apiKeys, host);
@@ -284,7 +301,7 @@ export async function handler(event, context) {
 
     const hasFbToken = Boolean(pageAccessToken && pageAccessToken.length > 20);
     const hasVerifyToken = Boolean(process.env.FB_VERIFY_TOKEN);
-    const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+    const model = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
 
     return {
       statusCode: 200,
@@ -376,7 +393,7 @@ export async function handler(event, context) {
 
             const photoPrompt = `${userText} (Context: You just sent a cute photo of yourself. Send a sweet 1-sentence follow-up asking how you look!)`;
             const rawCaption = await callGeminiWithRotation(apiKeys, photoPrompt);
-            const caption = cleanGirlfriendReply(rawCaption);
+            const caption = cleanGirlfriendReply(rawCaption) || "kuch acchi lag rahi hu ya nahi? 🥰";
 
             await sendFbText(pageAccessToken, senderPsid, caption);
             sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
@@ -384,11 +401,19 @@ export async function handler(event, context) {
           }
 
           const rawReply = await callGeminiWithRotation(apiKeys, userText);
-          const replyText = cleanGirlfriendReply(rawReply);
+          if (!rawReply) {
+            logEvent('SKIP_NO_AI_REPLY_PUSH', { senderPsid, userText });
+            sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
+            continue;
+          }
 
-          await sendFbText(pageAccessToken, senderPsid, replyText);
+          const replyText = cleanGirlfriendReply(rawReply);
+          if (replyText) {
+            await sendFbText(pageAccessToken, senderPsid, replyText);
+            logEvent('REPLY_SENT', { senderPsid, replyPreview: replyText.substring(0, 60) });
+          }
+
           sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
-          logEvent('REPLY_SENT', { senderPsid, replyPreview: replyText.substring(0, 60) });
         } catch (error) {
           logEvent('PROCESSING_ERROR', { error: error.message });
         }
