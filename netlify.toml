@@ -6,9 +6,6 @@
 [build.environment]
   SECRETS_SCAN_ENABLED = "false"
 
-[functions]
-  timeout = 26
-
 [[redirects]]
   from = "/webhook"
   to = "/.netlify/functions/webhook"
