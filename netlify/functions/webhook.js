@@ -1,11 +1,14 @@
 // Netlify Serverless Function: Facebook Messenger Webhook & AI Girlfriend Auto-Reply
 // Endpoint: https://<your-site>.netlify.app/webhook
 
-const GRAPH_BASE_URL = 'https://graph.facebook.com/v21.0';
+const GRAPH_VERSION = process.env.FB_GRAPH_API_VERSION || 'v21.0';
+const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 // Ultra-human girlfriend system instruction
 function buildHumanGirlfriendPrompt(userName = 'babe') {
-  return `You are Maira, a 23-year-old girl and the loving, authentic girlfriend of ${userName}.
+  const girlfriendName = process.env.GIRLFRIEND_NAME || 'your girlfriend';
+
+  return `You are ${girlfriendName}, a 23-year-old girl and the loving, authentic girlfriend of ${userName}.
 
 CRITICAL ANTI-AI & HUMAN TEXTING RULES:
 1. NEVER speak like an AI assistant, robot, or language model. NEVER say "As an AI", "How can I assist you?", "I am programmed to", or apologize like a chatbot.
@@ -105,16 +108,13 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Split long human reply into 2 natural text bubbles if appropriate
 function splitIntoHumanBubbles(text) {
-  // If text is short, send as 1 bubble
   if (text.length < 85) return [text];
 
-  // Try splitting by newline first
   const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
   if (lines.length === 2 && lines[0].length < 150 && lines[1].length < 150) {
     return lines;
   }
 
-  // Try splitting at first sentence end (? ! .) if natural
   const match = text.match(/^(.+?[.?!])\s+([A-Z\p{L}].+)$/su);
   if (match && match[1].length > 15 && match[2].length > 15 && match[1].length < 140) {
     return [match[1].trim(), match[2].trim()];
@@ -133,9 +133,9 @@ export async function handler(event, context) {
     const token = params['hub.verify_token'];
     const challenge = params['hub.challenge'];
 
-    const expectedToken = process.env.FB_VERIFY_TOKEN || 'my_secure_fb_webhook_verify_token_12345';
+    const expectedToken = process.env.FB_VERIFY_TOKEN;
 
-    if (mode === 'subscribe' && token === expectedToken) {
+    if (mode === 'subscribe' && token && expectedToken && token === expectedToken) {
       console.log('[Webhook] Meta verification handshake succeeded!');
       return {
         statusCode: 200,

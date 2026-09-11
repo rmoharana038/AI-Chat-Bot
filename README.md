@@ -63,7 +63,7 @@ Once deployed to Netlify, your chatbot's Facebook Webhook is live at:
 In your Netlify Site Dashboard $\rightarrow$ **Site configuration** $\rightarrow$ **Environment variables**, set:
 - `GEMINI_API_KEY`: Your Google Gemini API Key from [Google AI Studio](https://aistudio.google.com/app/apikey).
 - `FB_PAGE_ACCESS_TOKEN`: Page Access Token from [Meta for Developers](https://developers.facebook.com/).
-- `FB_VERIFY_TOKEN`: Verification token (default: `my_secure_fb_webhook_verify_token_12345`).
+- `FB_VERIFY_TOKEN`: A custom verification string you choose (e.g. any random secret word)
 
 ### Step 2: Configure Webhook in Meta App Dashboard
 1. Go to your Meta Developer App $\rightarrow$ **Messenger** $\rightarrow$ **Webhooks**.
