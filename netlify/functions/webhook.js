@@ -5,6 +5,15 @@
 const GRAPH_VERSION = process.env.FB_GRAPH_API_VERSION || 'v21.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
+// In-memory ring buffer to track recent events for live debugging
+const recentLogs = [];
+function logEvent(tag, data) {
+  const item = { time: new Date().toISOString(), tag, data };
+  recentLogs.push(item);
+  if (recentLogs.length > 25) recentLogs.shift();
+  console.log(`[${tag}]`, typeof data === 'object' ? JSON.stringify(data) : data);
+}
+
 // In-memory set to prevent duplicate webhook processing during retries
 const processedMids = new Set();
 
@@ -51,7 +60,7 @@ UNIVERSAL MULTILINGUAL CODE-SWITCHING (ANY LANGUAGE):
 - Match their emotional tone: if they are sad or stressed, be comforting, gentle, and warm. If they tease you, tease back playfully!`;
 }
 
-// Call Meta Graph API with timeout protection
+// Call Meta Graph API with timeout protection and detailed response logging
 async function callFacebookGraph(pageAccessToken, payload) {
   const url = `${GRAPH_BASE_URL}/me/messages?access_token=${encodeURIComponent(pageAccessToken)}`;
   try {
@@ -59,15 +68,13 @@ async function callFacebookGraph(pageAccessToken, payload) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(4000)
+      signal: AbortSignal.timeout(5000)
     });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      console.warn('[Facebook API Error]:', errorData);
-    }
+    const resBody = await res.text().catch(() => '');
+    logEvent('FB_GRAPH_RESULT', { status: res.status, body: resBody.substring(0, 150) });
     return res;
   } catch (err) {
-    console.warn('[Facebook API Dispatch Error]:', err.message);
+    logEvent('FB_GRAPH_DISPATCH_ERR', { error: err.message });
     return null;
   }
 }
@@ -106,9 +113,9 @@ async function sendFbImage(pageAccessToken, recipientId, imageUrl) {
   });
 }
 
-// Multi-account Gemini API rotation with timeout guard
+// Multi-account Gemini API rotation with gemini-3.6-flash
 async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
-  const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
   const prompt = buildHumanGirlfriendPrompt(userName);
 
   for (let i = 0; i < apiKeys.length; i++) {
@@ -124,16 +131,22 @@ async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
           contents: [{ role: 'user', parts: [{ text: userMessage }] }],
           generationConfig: { temperature: 0.9, maxOutputTokens: 200 }
         }),
-        signal: AbortSignal.timeout(4500)
+        signal: AbortSignal.timeout(3500)
       });
 
       if (res.ok) {
         const data = await res.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (text) return text;
+        if (text) {
+          logEvent('GEMINI_OK', { keyIndex: i, replyPreview: text.substring(0, 60) });
+          return text;
+        }
+      } else {
+        const errText = await res.text().catch(() => '');
+        logEvent('GEMINI_ERR', { keyIndex: i, status: res.status, err: errText.substring(0, 100) });
       }
     } catch (e) {
-      console.warn(`[Gemini Rotation] Key index ${i} failed (${e.message}). Trying next...`);
+      logEvent('GEMINI_TIMEOUT', { keyIndex: i, error: e.message });
     }
   }
 
@@ -163,7 +176,7 @@ function splitIntoHumanBubbles(text) {
 export async function handler(event, context) {
   const method = event.httpMethod;
 
-  // 1. GET: Meta Webhook Verification Handshake & Health Check
+  // 1. GET: Meta Webhook Verification Handshake & Live Health/Diagnostics
   if (method === 'GET') {
     const params = event.queryStringParameters || {};
     const mode = params['hub.mode'];
@@ -173,18 +186,19 @@ export async function handler(event, context) {
     const expectedToken = process.env.FB_VERIFY_TOKEN;
 
     if (mode === 'subscribe' && token && expectedToken && token === expectedToken) {
-      console.log('[Webhook] Meta verification handshake succeeded!');
+      logEvent('HANDSHAKE_SUCCESS', { mode, tokenReceived: token });
       return {
         statusCode: 200,
         body: challenge,
       };
     }
 
-    // Health check if accessed directly in browser
+    // Diagnostics if opened in browser or queried by curl
     const hasFbToken = Boolean(process.env.FB_PAGE_ACCESS_TOKEN && process.env.FB_PAGE_ACCESS_TOKEN.length > 20);
     const hasVerifyToken = Boolean(process.env.FB_VERIFY_TOKEN);
     const rawKeys = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
     const keyCount = rawKeys.split(',').map(k => k.trim()).filter(Boolean).length;
+    const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
     return {
       statusCode: 200,
@@ -194,36 +208,43 @@ export async function handler(event, context) {
         service: 'Aura AI Girlfriend Facebook Messenger Serverless Webhook',
         standalone: true,
         cloud: 'Netlify',
+        model: model,
         diagnostics: {
           hasFbPageAccessToken: hasFbToken,
           hasVerifyToken: hasVerifyToken,
           geminiKeyCount: keyCount
-        }
+        },
+        recentLogs: recentLogs.slice(-10)
       })
     };
   }
 
   // 2. POST: Ingest Facebook Messenger events
   if (method === 'POST') {
+    let rawBody = event.body || '{}';
+    if (event.isBase64Encoded) {
+      rawBody = Buffer.from(rawBody, 'base64').toString('utf8');
+    }
+
     let body;
     try {
-      body = JSON.parse(event.body || '{}');
+      body = JSON.parse(rawBody);
     } catch (e) {
+      logEvent('JSON_PARSE_ERROR', { error: e.message, rawSnippet: rawBody.substring(0, 100) });
       return { statusCode: 400, body: 'Invalid JSON' };
     }
 
     if (body.object !== 'page') {
+      logEvent('NON_PAGE_OBJECT', { object: body.object });
       return { statusCode: 404, body: 'Not Found' };
     }
 
     const pageAccessToken = process.env.FB_PAGE_ACCESS_TOKEN;
-    
-    // Support multi-account Gemini keys
     const rawKeys = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
     const apiKeys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
 
     if (!pageAccessToken || apiKeys.length === 0) {
-      console.warn('[Webhook] Missing FB_PAGE_ACCESS_TOKEN or GEMINI_API_KEY(S) in environment variables.');
+      logEvent('CONFIG_MISSING', { hasToken: Boolean(pageAccessToken), keyCount: apiKeys.length });
       return { statusCode: 200, body: 'EVENT_RECEIVED' };
     }
 
@@ -235,11 +256,15 @@ export async function handler(event, context) {
       for (const msgEvent of messagingEvents) {
         const senderPsid = msgEvent.sender?.id;
 
-        // Ignore echo messages
-        if (msgEvent.message?.is_echo) continue;
+        // Ignore echo messages sent by the page itself
+        if (msgEvent.message?.is_echo) {
+          logEvent('IGNORE_ECHO', { mid: msgEvent.message?.mid });
+          continue;
+        }
 
         const mid = msgEvent.message?.mid;
         if (mid && processedMids.has(mid)) {
+          logEvent('IGNORE_DUPLICATE', { mid });
           continue;
         }
         if (mid) {
@@ -253,15 +278,14 @@ export async function handler(event, context) {
         const userText = msgEvent.message?.text || msgEvent.postback?.title;
         if (!userText) continue;
 
-        console.log(`[Webhook] Message from ${senderPsid}: "${userText}"`);
+        logEvent('INCOMING_MSG', { senderPsid, text: userText });
 
-        // Execute Fast Human-Like Cadence:
         try {
           // A. Mark message as seen immediately
           sendSenderAction(pageAccessToken, senderPsid, 'mark_seen').catch(() => {});
 
-          // B. Quick reading pause (300ms)
-          await sleep(300);
+          // B. Quick reading pause (250ms)
+          await sleep(250);
 
           // C. Show Messenger typing indicator dots
           sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
@@ -272,7 +296,7 @@ export async function handler(event, context) {
             const photoUrl = `https://${host}/photos/photo_${randomPhotoNum}.png`;
 
             await sendFbImage(pageAccessToken, senderPsid, photoUrl);
-            await sleep(500);
+            await sleep(400);
 
             const photoPrompt = `${userText} (Context: You just sent a cute photo of yourself. Send a sweet, cute 1-sentence follow-up asking how you look!)`;
             const caption = await callGeminiWithRotation(apiKeys, photoPrompt);
@@ -282,11 +306,11 @@ export async function handler(event, context) {
             continue;
           }
 
-          // E. Generate Girlfriend Reply with Gemini
+          // E. Generate Girlfriend Reply with Gemini 3.6 Flash
           const replyText = await callGeminiWithRotation(apiKeys, userText);
 
-          // F. Quick typing delay (~800ms)
-          await sleep(800);
+          // F. Quick typing delay (~500ms)
+          await sleep(500);
 
           // G. Multi-bubble texting (splits into 2 realistic texts if natural)
           const bubbles = splitIntoHumanBubbles(replyText);
@@ -296,14 +320,15 @@ export async function handler(event, context) {
           } else {
             await sendFbText(pageAccessToken, senderPsid, bubbles[0]);
             sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
-            await sleep(600);
+            await sleep(500);
             await sendFbText(pageAccessToken, senderPsid, bubbles[1]);
           }
 
           // H. Stop typing indicator
           sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
+          logEvent('REPLY_SENT', { senderPsid, replyPreview: replyText.substring(0, 60) });
         } catch (error) {
-          console.error('[Webhook Processing Error]:', error);
+          logEvent('PROCESSING_ERROR', { error: error.message });
         }
       }
     }
