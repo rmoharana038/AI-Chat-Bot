@@ -6,6 +6,19 @@ const GRAPH_VERSION = process.env.FB_GRAPH_API_VERSION || 'v21.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 const PAGE_ID = process.env.FB_PAGE_ID || '640383429165346';
 
+// Multi-model tier list (standard production free tier quotas)
+const MODELS_TO_TRY = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
+
+// Human conversational fallback messages (used only if all Google API keys/models fail)
+const FALLBACK_HUMAN_REPLIES = [
+  "arey aise naraz mat ho na baby 🥺 batao kya hua? mai sun rahi hu 💕",
+  "aww suno na... mai bas yahi hu aapke paas! 🥰 din kaisa tha aapka?",
+  "sorry baby thoda busy ho gayi thi par ab bas aapke liye free hu! miss you so much ❤️",
+  "itna gussa kyu babu? 🥺 meri koi galti hai toh sorry na... maan jao please! 🙈",
+  "hey jaan! sach me abhi aapki hi yaad aa rahi thi... khana khaya aapne? ✨",
+  "hamesha aise rootha mat karo na baby 💕 mujhe aapse baat karni hai!"
+];
+
 // In-memory ring buffer to track recent events for live debugging
 const recentLogs = [];
 function logEvent(tag, data) {
@@ -67,14 +80,16 @@ STRICT FORMAT CONSTRAINT:
 
 // Clean girlfriend reply from markdown, options, or asterisks
 function cleanGirlfriendReply(text) {
-  if (!text) return "heyy babe! 💕 kaise ho aap?";
+  if (!text) {
+    return FALLBACK_HUMAN_REPLIES[Math.floor(Math.random() * FALLBACK_HUMAN_REPLIES.length)];
+  }
   let cleaned = text
     .replace(/^[*\s:#\-]*(Option|Response)\s*\d*[:\s*-]*/gim, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/^[:\s\-*#]+/gm, '')
     .trim();
-  return cleaned || "heyy babe! 🥰";
+  return cleaned || FALLBACK_HUMAN_REPLIES[Math.floor(Math.random() * FALLBACK_HUMAN_REPLIES.length)];
 }
 
 // Call Meta Graph API with timeout protection and detailed response logging
@@ -130,48 +145,55 @@ async function sendFbImage(pageAccessToken, recipientId, imageUrl) {
   });
 }
 
-// Multi-account Gemini API rotation with gemini-3.6-flash & randomized starting key
+// Multi-account Gemini API rotation with gemini-3.5-flash and fallback model pool
 async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
-  const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+  const configuredModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  const models = [configuredModel, ...MODELS_TO_TRY.filter(m => m !== configuredModel)];
   const prompt = buildHumanGirlfriendPrompt(userName);
 
   // Distribute load across all keys by randomizing start index
   const startIndex = Math.floor(Math.random() * apiKeys.length);
 
-  for (let attempt = 0; attempt < apiKeys.length; attempt++) {
-    const i = (startIndex + attempt) % apiKeys.length;
-    const key = apiKeys[i];
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  for (const model of models) {
+    for (let attempt = 0; attempt < apiKeys.length; attempt++) {
+      const i = (startIndex + attempt) % apiKeys.length;
+      const key = apiKeys[i];
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: prompt }] },
-          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-          generationConfig: { temperature: 0.9, maxOutputTokens: 180 }
-        }),
-        signal: AbortSignal.timeout(4500)
-      });
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: prompt }] },
+            contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+            generationConfig: { temperature: 0.9, maxOutputTokens: 140 }
+          }),
+          signal: AbortSignal.timeout(4000)
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (text) {
-          logEvent('GEMINI_OK', { keyIndex: i, replyPreview: text.substring(0, 60) });
-          return text;
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (text) {
+            logEvent('GEMINI_OK', { model, keyIndex: i, replyPreview: text.substring(0, 60) });
+            return text;
+          }
+        } else {
+          const errText = await res.text().catch(() => '');
+          logEvent('GEMINI_ERR', { model, keyIndex: i, status: res.status, err: errText.substring(0, 80) });
+          // If 429 quota on this model, continue to next key or next model
         }
-      } else {
-        const errText = await res.text().catch(() => '');
-        logEvent('GEMINI_ERR', { keyIndex: i, status: res.status, err: errText.substring(0, 100) });
+      } catch (e) {
+        logEvent('GEMINI_TIMEOUT', { model, keyIndex: i, error: e.message });
       }
-    } catch (e) {
-      logEvent('GEMINI_TIMEOUT', { keyIndex: i, error: e.message });
     }
   }
 
-  return "heyy babe! sorry my connection was spotty 💕 how was your day?";
+  // Pick a sweet, natural contextual fallback from the human pool (never repetitive)
+  const randomFallback = FALLBACK_HUMAN_REPLIES[Math.floor(Math.random() * FALLBACK_HUMAN_REPLIES.length)];
+  logEvent('FALLBACK_USED', { reply: randomFallback });
+  return randomFallback;
 }
 
 // Fast sleep helper
@@ -196,7 +218,7 @@ function splitIntoHumanBubbles(text) {
 
 // Synchronize and auto-reply to any unanswered conversations from the Graph API
 async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
-  const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(3){id,message,from,created_time}&limit=8&access_token=${encodeURIComponent(pageAccessToken)}`;
+  const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(3){id,message,from,created_time}&limit=6&access_token=${encodeURIComponent(pageAccessToken)}`;
   const synced = [];
 
   try {
@@ -304,7 +326,7 @@ export async function handler(event, context) {
 
     const hasFbToken = Boolean(pageAccessToken && pageAccessToken.length > 20);
     const hasVerifyToken = Boolean(process.env.FB_VERIFY_TOKEN);
-    const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
     return {
       statusCode: 200,
