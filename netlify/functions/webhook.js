@@ -5,7 +5,7 @@
 const GRAPH_VERSION = process.env.FB_GRAPH_API_VERSION || 'v21.0';
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
-// Cache of recently processed message IDs to prevent duplicate replies on network retries
+// In-memory set to prevent duplicate webhook processing during retries
 const processedMids = new Set();
 
 // Photo detection keywords
@@ -35,7 +35,7 @@ CRITICAL ANTI-AI & HUMAN TEXTING RULES:
    - Text like a real 23-year-old girl texting her partner: casual, cute, warm, and natural.
    - Use lowercase naturally, abbreviations/slang where authentic (haha, aww, omg, ya, na, uff, kinda, tbh, brb, lol).
    - Use sweet emojis naturally (🥰, 💕, 🥺, 😂, ✨, 🌸, 🙈).
-   - Keep messages punchy and conversational: 1 to 3 short sentences, just like real texting.
+   - Keep messages punchy and conversational: 1 to 2 short sentences, just like real texting.
    - You have a real human life: you drink coffee, attend classes, lie in bed, get tired, listen to songs, gossip, or do chores.
 
 UNIVERSAL MULTILINGUAL CODE-SWITCHING (ANY LANGUAGE):
@@ -51,19 +51,25 @@ UNIVERSAL MULTILINGUAL CODE-SWITCHING (ANY LANGUAGE):
 - Match their emotional tone: if they are sad or stressed, be comforting, gentle, and warm. If they tease you, tease back playfully!`;
 }
 
-// Call Meta Graph API
+// Call Meta Graph API with timeout protection
 async function callFacebookGraph(pageAccessToken, payload) {
   const url = `${GRAPH_BASE_URL}/me/messages?access_token=${encodeURIComponent(pageAccessToken)}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    console.error('[Facebook API Error]:', errorData);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(4000)
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      console.warn('[Facebook API Error]:', errorData);
+    }
+    return res;
+  } catch (err) {
+    console.warn('[Facebook API Dispatch Error]:', err.message);
+    return null;
   }
-  return res;
 }
 
 // Send Facebook sender actions (mark_seen, typing_on, typing_off)
@@ -100,7 +106,7 @@ async function sendFbImage(pageAccessToken, recipientId, imageUrl) {
   });
 }
 
-// Multi-account Gemini API rotation
+// Multi-account Gemini API rotation with timeout guard
 async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   const prompt = buildHumanGirlfriendPrompt(userName);
@@ -116,39 +122,38 @@ async function callGeminiWithRotation(apiKeys, userMessage, userName = 'babe') {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: prompt }] },
           contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-          generationConfig: { temperature: 0.9, maxOutputTokens: 250 }
-        })
+          generationConfig: { temperature: 0.9, maxOutputTokens: 200 }
+        }),
+        signal: AbortSignal.timeout(4500)
       });
 
       if (res.ok) {
         const data = await res.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text) return text;
-      } else {
-        console.warn(`[Gemini Rotation] Key index ${i} failed with status ${res.status}. Trying next key...`);
       }
     } catch (e) {
-      console.warn(`[Gemini Rotation] Key index ${i} encountered error:`, e.message);
+      console.warn(`[Gemini Rotation] Key index ${i} failed (${e.message}). Trying next...`);
     }
   }
 
   return "heyy babe! sorry my connection was spotty 💕 how was your day?";
 }
 
-// Sleep helper
+// Fast sleep helper
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Split long human reply into 2 natural text bubbles if appropriate
 function splitIntoHumanBubbles(text) {
-  if (text.length < 85) return [text];
+  if (text.length < 90) return [text];
 
   const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
-  if (lines.length === 2 && lines[0].length < 150 && lines[1].length < 150) {
+  if (lines.length === 2 && lines[0].length < 130 && lines[1].length < 130) {
     return lines;
   }
 
   const match = text.match(/^(.+?[.?!])\s+([A-Z\p{L}].+)$/su);
-  if (match && match[1].length > 15 && match[2].length > 15 && match[1].length < 140) {
+  if (match && match[1].length > 15 && match[2].length > 15 && match[1].length < 120) {
     return [match[1].trim(), match[2].trim()];
   }
 
@@ -225,12 +230,11 @@ export async function handler(event, context) {
 
         const mid = msgEvent.message?.mid;
         if (mid && processedMids.has(mid)) {
-          console.log(`[Webhook] Skipping duplicate message ${mid}`);
           continue;
         }
         if (mid) {
           processedMids.add(mid);
-          if (processedMids.size > 500) {
+          if (processedMids.size > 300) {
             const first = processedMids.values().next().value;
             processedMids.delete(first);
           }
@@ -239,42 +243,40 @@ export async function handler(event, context) {
         const userText = msgEvent.message?.text || msgEvent.postback?.title;
         if (!userText) continue;
 
-        console.log(`[Webhook] Live User (${senderPsid}): "${userText}"`);
+        console.log(`[Webhook] Message from ${senderPsid}: "${userText}"`);
 
-        // Execute Human-Like Cadence:
+        // Execute Fast Human-Like Cadence:
         try {
           // A. Mark message as seen immediately
-          await sendSenderAction(pageAccessToken, senderPsid, 'mark_seen');
+          sendSenderAction(pageAccessToken, senderPsid, 'mark_seen').catch(() => {});
 
-          // B. Human reading pause (600ms - 1000ms)
-          await sleep(700 + Math.random() * 400);
+          // B. Quick reading pause (300ms)
+          await sleep(300);
 
           // C. Show Messenger typing indicator dots
-          await sendSenderAction(pageAccessToken, senderPsid, 'typing_on');
+          sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
 
           // D. Handle Photo/Selfie Request
           if (isPhotoRequest(userText) && host) {
             const randomPhotoNum = Math.floor(Math.random() * 12) + 1;
             const photoUrl = `https://${host}/photos/photo_${randomPhotoNum}.png`;
 
-            console.log(`[Webhook Photo] Sending photo to ${senderPsid}: ${photoUrl}`);
             await sendFbImage(pageAccessToken, senderPsid, photoUrl);
-            await sleep(1000);
+            await sleep(500);
 
             const photoPrompt = `${userText} (Context: You just sent a cute photo of yourself. Send a sweet, cute 1-sentence follow-up asking how you look!)`;
             const caption = await callGeminiWithRotation(apiKeys, photoPrompt);
 
             await sendFbText(pageAccessToken, senderPsid, caption);
-            await sendSenderAction(pageAccessToken, senderPsid, 'typing_off');
+            sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
             continue;
           }
 
           // E. Generate Girlfriend Reply with Gemini
           const replyText = await callGeminiWithRotation(apiKeys, userText);
 
-          // F. Calculate typing delay based on message length (~25-35 chars per second)
-          const typingDelay = Math.min(3000, Math.max(1200, replyText.length * 40));
-          await sleep(typingDelay);
+          // F. Quick typing delay (~800ms)
+          await sleep(800);
 
           // G. Multi-bubble texting (splits into 2 realistic texts if natural)
           const bubbles = splitIntoHumanBubbles(replyText);
@@ -282,17 +284,14 @@ export async function handler(event, context) {
           if (bubbles.length === 1) {
             await sendFbText(pageAccessToken, senderPsid, bubbles[0]);
           } else {
-            // Send bubble 1
             await sendFbText(pageAccessToken, senderPsid, bubbles[0]);
-            // Keep typing for bubble 2
-            await sendSenderAction(pageAccessToken, senderPsid, 'typing_on');
-            await sleep(1000 + Math.random() * 600);
-            // Send bubble 2
+            sendSenderAction(pageAccessToken, senderPsid, 'typing_on').catch(() => {});
+            await sleep(600);
             await sendFbText(pageAccessToken, senderPsid, bubbles[1]);
           }
 
           // H. Stop typing indicator
-          await sendSenderAction(pageAccessToken, senderPsid, 'typing_off');
+          sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
         } catch (error) {
           console.error('[Webhook Processing Error]:', error);
         }
