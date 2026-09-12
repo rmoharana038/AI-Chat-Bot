@@ -208,17 +208,23 @@ async function sendFbText(recipientId, text) {
 }
 
 async function run() {
-  console.log('🔍 Scanning Facebook Messenger conversations for unanswered user messages...\n');
-  const convUrl = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,updated_time,messages.limit(5){id,message,attachments,shares,sticker,from,created_time}&limit=75&access_token=${encodeURIComponent(token)}`;
+  console.log('🔍 Scanning ALL Facebook Messenger conversations for unanswered user messages...\n');
+  let convUrl = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,updated_time,messages.limit(5){id,message,attachments,shares,sticker,from,created_time}&limit=50&access_token=${encodeURIComponent(token)}`;
   
-  const res = await fetch(convUrl);
-  const data = await res.json();
-  if (data.error) {
-    console.error('Error fetching conversations:', data.error);
-    return;
+  const convs = [];
+  while (convUrl && convs.length < 500) {
+    const res = await fetch(convUrl);
+    const data = await res.json();
+    if (data.error) {
+      console.error('Error fetching conversations:', data.error);
+      break;
+    }
+    const batch = data.data || [];
+    convs.push(...batch);
+    convUrl = data.paging?.next;
+    if (!batch.length) break;
   }
 
-  const convs = data.data || [];
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
 
