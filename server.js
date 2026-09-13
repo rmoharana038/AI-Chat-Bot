@@ -137,6 +137,7 @@ app.post('/webhook', (req, res) => {
 
       if (!senderPsid || (!userText && !imageUrl)) continue;
 
+      console.log(`⚡ [Instant Webhook Received] From ${senderPsid}: "${userText.substring(0, 40)}..." (Has Image: ${Boolean(imageUrl)})`);
       handleIncomingMessage(senderPsid, userText, req.headers.host || '', imageUrl).catch(err => {
         console.error('Error handling webhook message:', err.message);
       });
@@ -748,56 +749,79 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
 }
 
 // ==========================================
-// 5. FAILSAFE AUTO-REPLY POLLER (Every 4s)
+// 5. META REAL-TIME WEBHOOK AUTO-SUBSCRIBER
+// ==========================================
+async function ensurePageSubscribed() {
+  if (!pageAccessToken) return;
+  try {
+    const url = `${GRAPH_BASE_URL}/${PAGE_ID}/subscribed_apps?subscribed_fields=messages,messaging_postbacks&access_token=${encodeURIComponent(pageAccessToken)}`;
+    const res = await fetch(url, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      console.log('⚡ [Real-Time Webhook] Page 640383429165346 successfully subscribed to Messenger events!');
+    } else {
+      console.warn('⚠️ [Real-Time Webhook] Subscription status:', data);
+    }
+  } catch (e) {
+    console.error('❌ [Real-Time Webhook] Subscription error:', e.message);
+  }
+}
+
+// ==========================================
+// 6. FAILSAFE AUTO-REPLY POLLER (Continuous Non-Blocking)
 // ==========================================
 async function runAutoReplyWatcher() {
   if (!pageAccessToken) return;
 
-  setInterval(async () => {
+  while (true) {
     try {
-      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(5){id,message,from,created_time,attachments{image_data,file_url,mime_type}}&limit=30&access_token=${encodeURIComponent(pageAccessToken)}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(4500) });
-      if (!res.ok) return;
-      const data = await res.json();
+      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(5){id,message,from,created_time,attachments{image_data,file_url,mime_type}}&limit=25&access_token=${encodeURIComponent(pageAccessToken)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+      if (res.ok) {
+        const data = await res.json();
+        for (const conv of data.data || []) {
+          const messages = conv.messages?.data || [];
+          if (!messages.length) continue;
+          const latest = messages[0];
+          const user = conv.participants?.data?.find(p => p.id !== PAGE_ID);
 
-      for (const conv of data.data || []) {
-        const messages = conv.messages?.data || [];
-        if (!messages.length) continue;
-        const latest = messages[0];
-        const user = conv.participants?.data?.find(p => p.id !== PAGE_ID);
+          if (!user || !latest.id) continue;
+          if (latest.from?.id === PAGE_ID) continue; // Already answered
+          if (processedMids.has(latest.id)) continue;
 
-        if (!user || !latest.id) continue;
-        if (latest.from?.id === PAGE_ID) continue; // Already answered
-        if (processedMids.has(latest.id)) continue;
+          const ageMs = Date.now() - new Date(latest.created_time).getTime();
+          // If message arrived within Facebook's official 24-hour standard messaging window
+          if (ageMs < 24 * 60 * 60 * 1000) {
+            // Extract image attachment if present
+            let imageUrl = null;
+            if (latest.attachments?.data?.length) {
+              const imgAtt = latest.attachments.data.find(a => a.image_data?.url || a.file_url || (a.mime_type && a.mime_type.startsWith('image/')));
+              imageUrl = imgAtt?.image_data?.url || imgAtt?.file_url || null;
+            }
 
-        const ageMs = Date.now() - new Date(latest.created_time).getTime();
-        // If message arrived within Facebook's official 24-hour standard messaging window
-        if (ageMs < 24 * 60 * 60 * 1000) {
-          processedMids.add(latest.id);
+            const rawText = (latest.message || '').trim();
+            if (!rawText && !imageUrl) continue;
 
-          // Extract image attachment if present
-          let imageUrl = null;
-          if (latest.attachments?.data?.length) {
-            const imgAtt = latest.attachments.data.find(a => a.image_data?.url || a.file_url || (a.mime_type && a.mime_type.startsWith('image/')));
-            imageUrl = imgAtt?.image_data?.url || imgAtt?.file_url || null;
+            console.log(`⚡ [Watcher Auto-Replying] To ${user.name}: "${rawText.substring(0, 40)}..." (Has Image: ${Boolean(imageUrl)})`);
+            await handleIncomingMessage(user.id, rawText, '', imageUrl);
+            processedMids.add(latest.id);
+            if (processedMids.size > 1000) {
+              const first = processedMids.values().next().value;
+              processedMids.delete(first);
+            }
+            await sleep(1000); // Safety pause between messages
           }
-
-          const rawText = (latest.message || '').trim();
-          if (!rawText && !imageUrl) continue;
-
-          console.log(`⚡ [Watcher Auto-Replying] To ${user.name}: "${rawText.substring(0, 40)}..." (Has Image: ${Boolean(imageUrl)})`);
-          await handleIncomingMessage(user.id, rawText, '', imageUrl);
-          await sleep(1200); // Safety pause between messages to avoid Facebook rate limits
         }
       }
     } catch (e) {
       // Ignore background poll errors
     }
-  }, 4000);
+    await sleep(2500); // Wait 2.5s before next check
+  }
 }
 
 // ==========================================
-// 6. GLOBAL ERROR HANDLING & SERVER START
+// 7. GLOBAL ERROR HANDLING & SERVER START
 // ==========================================
 process.on('uncaughtException', (err) => {
   console.error('[Uncaught Exception]:', err.message || err);
@@ -815,8 +839,13 @@ app.listen(PORT, () => {
   console.log(` 🔗 Meta Webhook URL:       http://localhost:${PORT}/webhook`);
   console.log('=============================================================\n');
 
+  if (pageAccessToken) {
+    ensurePageSubscribed();
+    setInterval(ensurePageSubscribed, 30 * 60 * 1000); // Refresh subscription every 30 mins
+  }
+
   if (pageAccessToken && apiKeys.length > 0) {
-    console.log('🚀 Failsafe Auto-Reply Watcher started (4s polling)...');
+    console.log('🚀 Failsafe Auto-Reply Watcher started (continuous non-blocking poll)...');
     runAutoReplyWatcher();
   }
 });
