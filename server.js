@@ -12,6 +12,7 @@ import {
   getUnsentPhotos
 } from './src/services/userStore.js';
 import { generateNewGirlfriendPhoto } from './src/services/imageGenerator.js';
+import { analyzeUserImage } from './src/services/visionAnalyzer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -126,10 +127,16 @@ app.post('/webhook', (req, res) => {
       }
 
       const senderPsid = msgEvent.sender?.id;
-      const userText = msgEvent.message?.text || msgEvent.postback?.title;
-      if (!senderPsid || !userText) continue;
+      const userText = (msgEvent.message?.text || msgEvent.postback?.title || '').trim();
 
-      handleIncomingMessage(senderPsid, userText, req.headers.host || '').catch(err => {
+      // Extract image attachment if present
+      const attachments = msgEvent.message?.attachments || [];
+      const imgAttachment = attachments.find(a => a.type === 'image');
+      const imageUrl = imgAttachment?.payload?.url || null;
+
+      if (!senderPsid || (!userText && !imageUrl)) continue;
+
+      handleIncomingMessage(senderPsid, userText, req.headers.host || '', imageUrl).catch(err => {
         console.error('Error handling webhook message:', err.message);
       });
     }
@@ -434,9 +441,46 @@ function cleanGirlfriendReply(text) {
 }
 
 function isPhotoRequest(text) {
-  const t = (text || '').toLowerCase();
-  const keywords = ['pic', 'photo', 'picture', 'selfie', 'tasveer', 'image', 'dekhna hai', 'bhejo', 'send photo', 'send pic', 'फोटो', 'तस्वीर', 'تصویر'];
-  return keywords.some(k => t.includes(k));
+  if (!text) return false;
+  const t = text.toLowerCase().trim();
+
+  // Exclude self-references where user refers to their own photo or appearance
+  const selfPatterns = [
+    'my photo', 'my pic', 'my picture', 'my selfie', 'my look',
+    'how do i look', 'how i look', 'am i looking',
+    'meri photo', 'mera photo', 'meri pic', 'mera pic', 'meri tasveer',
+    'kaisa lag raha', 'kaisi lag rahi', 'kaisa laga', 'kaisi lagi',
+    'me kaisa', 'main kaisa', 'kaisa hu me', 'kaisa lag raha hu',
+    'मेरी फोटो', 'मेरा फोटो', 'कैसा लग रहा', 'कैसी लग रही', 'मेरी तस्वीर',
+    'میری تصویر'
+  ];
+  if (selfPatterns.some(p => t.includes(p))) return false;
+
+  const reqPatterns = [
+    // English explicit photo requests
+    /send\s*(me\s*)?(your\s*)?(photo|pic|picture|selfie|image)/i,
+    /(share|show|give)\s*(me\s*)?(your\s*)?(photo|pic|picture|selfie|image|face)/i,
+    /(want|wanna|can\s*i)\s*(to\s*)?(see|get)\s*(your\s*)?(photo|pic|picture|selfie|face)/i,
+    /(see|view)\s*(your\s*)?(face|photo|pic)/i,
+    /your\s*(photo|pic|picture|selfie)/i,
+
+    // Hindi / Hinglish explicit photo requests
+    /(apni|apna|tumhari|teri|aapki)\s*(photo|pic|picture|selfie|tasveer|image)/i,
+    /(photo|pic|selfie|tasveer|image)\s*(bhejo|bhej|send|dikhao|dikhana|share|karo)/i,
+    /(bhejo|bhej|dikhao|dikhana|send)\s*(na\s*)?(apni|apna|tumhari|teri|ek)?\s*(photo|pic|selfie|tasveer)/i,
+    /(photo|pic|selfie)\s*(dekhna|dekhni)\s*(hai|h)/i,
+    /(chehra|face)\s*(dikhao|dekhna)/i,
+
+    // Devanagari Hindi explicit photo requests
+    /(अपनी|तुम्हारा|तुम्हारी|आपकी|एक)?\s*(फोटो|तस्वीर|सेल्फी)\s*(भेजो|दिखाओ|शेयर|करो|देखनी)/i,
+    /(फोटो|तस्वीर)\s*(भेजो|दिखाओ)/i,
+
+    // Urdu explicit photo requests
+    /(تصویر|فوٹو)\s*(بھیجو|دکھاؤ)/i,
+    /(اپنی|تمہاری)\s*(تصویر|فوٹو)/i
+  ];
+
+  return reqPatterns.some(regex => regex.test(t));
 }
 
 function isTravelQuery(text) {
@@ -598,16 +642,38 @@ async function callGemini(contents, userName = 'babe', langInfo = null, userStat
   return null;
 }
 
-async function handleIncomingMessage(senderPsid, userText, host = '') {
+async function handleIncomingMessage(senderPsid, userText, host = '', incomingImageUrl = null) {
   sendSenderAction(senderPsid, 'mark_seen').catch(() => {});
   sendSenderAction(senderPsid, 'typing_on').catch(() => {});
 
   const history = await fetchRecentHistory(senderPsid);
   const langInfo = detectUserLanguage(userText, history);
   const userState = getUser(senderPsid);
-  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code}) | Photos Sent: ${userState.sentPhotos.length}`);
+  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code}) | Has Image: ${Boolean(incomingImageUrl)} | Photos Sent: ${userState.sentPhotos.length}`);
 
-  // Handle Photo Request
+  // 1. Check if user sent a photo (Multimodal Visual Analysis)
+  if (incomingImageUrl) {
+    console.log(`📸 [User Sent Photo] Analyzing image from ${senderPsid}...`);
+    const rawAnalysis = await analyzeUserImage({
+      imageUrl: incomingImageUrl,
+      userCaption: userText,
+      userName: 'babe',
+      langInfo,
+      apiKeys
+    });
+    const replyText = cleanGirlfriendReply(rawAnalysis) || (
+      langInfo.code === 'ENGLISH'
+        ? 'Aww thank you for sharing this photo baby! 🥰'
+        : 'Aww itni pyari photo bheji aapne baby! 🥰'
+    );
+
+    await sendTextMessage(senderPsid, replyText);
+    sendSenderAction(senderPsid, 'typing_off').catch(() => {});
+    console.log(`✅ [Photo Analyzed & Replied in ${langInfo.name}] To ${senderPsid}: "${replyText.substring(0, 50)}..."`);
+    return; // Decoupled: Never send Maira's photo when user sends an image!
+  }
+
+  // 2. Handle Explicit Request for Maira's Photo
   if (isPhotoRequest(userText)) {
     const storedPhotos = getStoredPhotosList();
     const unsent = getUnsentPhotos(senderPsid, storedPhotos);
@@ -687,7 +753,7 @@ async function runAutoReplyWatcher() {
 
   setInterval(async () => {
     try {
-      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(3){id,message,from,created_time}&limit=30&access_token=${encodeURIComponent(pageAccessToken)}`;
+      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(5){id,message,from,created_time,attachments{image_data,file_url,mime_type}}&limit=30&access_token=${encodeURIComponent(pageAccessToken)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(4500) });
       if (!res.ok) return;
       const data = await res.json();
@@ -706,10 +772,19 @@ async function runAutoReplyWatcher() {
         // If message arrived within Facebook's official 24-hour standard messaging window
         if (ageMs < 24 * 60 * 60 * 1000) {
           processedMids.add(latest.id);
+
+          // Extract image attachment if present
+          let imageUrl = null;
+          if (latest.attachments?.data?.length) {
+            const imgAtt = latest.attachments.data.find(a => a.image_data?.url || a.file_url || (a.mime_type && a.mime_type.startsWith('image/')));
+            imageUrl = imgAtt?.image_data?.url || imgAtt?.file_url || null;
+          }
+
           const rawText = (latest.message || '').trim();
-          const userText = rawText || '(User sent an attachment, photo or sticker. React playfully and sweetly like a real girlfriend)';
-          console.log(`⚡ [Watcher Auto-Replying] To ${user.name}: "${userText.substring(0, 40)}..."`);
-          await handleIncomingMessage(user.id, userText);
+          if (!rawText && !imageUrl) continue;
+
+          console.log(`⚡ [Watcher Auto-Replying] To ${user.name}: "${rawText.substring(0, 40)}..." (Has Image: ${Boolean(imageUrl)})`);
+          await handleIncomingMessage(user.id, rawText, '', imageUrl);
           await sleep(1200); // Safety pause between messages to avoid Facebook rate limits
         }
       }
