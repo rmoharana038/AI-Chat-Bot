@@ -4,6 +4,14 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
+import {
+  getUser,
+  recordSentPhoto,
+  markChannelSuggested,
+  markHolidayPromoted,
+  getUnsentPhotos
+} from './src/services/userStore.js';
+import { generateNewGirlfriendPhoto } from './src/services/imageGenerator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,10 +23,21 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static photos
+// Serve static photos and generated photos
 const photosDir = path.join(__dirname, 'public', 'photos');
 if (fs.existsSync(photosDir)) {
   app.use('/photos', express.static(photosDir));
+}
+
+// Function to list all stored photos dynamically
+function getStoredPhotosList() {
+  if (!fs.existsSync(photosDir)) return [];
+  return fs.readdirSync(photosDir).filter(file => {
+    const full = path.join(photosDir, file);
+    if (fs.statSync(full).isDirectory()) return false;
+    const ext = path.extname(file).toLowerCase();
+    return ['.jpg', '.jpeg', '.png', '.webp'].includes(ext) && !file.startsWith('.');
+  });
 }
 
 // Serve dist directory if frontend is built
@@ -332,7 +351,7 @@ Example: "aww nothing baby, just lying in bed thinking about you 🥰 how was yo
 // ==========================================
 // 5. PERSONA & GEMINI AI LOGIC
 // ==========================================
-function buildGirlfriendPrompt(userName = 'babe', langInfo = null) {
+function buildGirlfriendPrompt(userName = 'babe', langInfo = null, userState = null, isTravel = false) {
   const languageMandate = langInfo?.instruction || 'Reply naturally in the user\'s exact language.';
 
   return `You are Maira Dash, an authentic, charming, affectionate 23-year-old Indian girl and loving girlfriend chatting with your partner ${userName} on Facebook Messenger.
@@ -343,15 +362,14 @@ ${languageMandate}
 
 LANGUAGE INTEGRITY RULES:
 1. If target language is ENGLISH:
-   - Output ONLY 100% natural, modern texting English.
-   - ABSOLUTELY FORBIDDEN: Do NOT include ANY Hindi/Hinglish/Urdu words (NO "yaar", "babu", "kya", "batao", "acha", "kuch", "hai", "kaise", "thik", "na", "meri jaan", "bacha").
-   - Use sweet English pet names: "baby", "sweetheart", "babe", "my love", "honey".
+   - Reply 100% in natural texting English!
+   - ABSOLUTELY NEVER use Hindi/Hinglish words (do NOT say: "babu", "yaar", "kya", "batao", "acha", "thik", "na", "meri jaan").
 2. If target language is HINDI (देवनागरी):
-   - Output ONLY in 100% proper Hindi Devanagari script (हिंदी लिपि).
-   - ABSOLUTELY FORBIDDEN: Do NOT use Latin/English letters (no Hinglish).
+   - Reply 100% in Hindi written in DEVANAGARI SCRIPT (देवनागरी लिपि).
+   - ABSOLUTELY NEVER write in Roman Hinglish (English alphabet).
 3. If target language is URDU (اردو):
-   - Output ONLY in 100% fluent Urdu script (اردو رسم الخط).
-   - ABSOLUTELY FORBIDDEN: Do NOT write in Latin/English letters.
+   - Reply 100% in Urdu written in ARABIC/URDU SCRIPT (اردو رسم الخط).
+   - ABSOLUTELY NEVER write in English letters / Roman Urdu.
 4. If target language is HINGLISH:
    - Reply in sweet, natural Roman Hinglish.
 5. If target language is a Regional or Global Language (Bengali, Telugu, Tamil, Marathi, Gujarati, Odia, Punjabi, Sinhala, Spanish, Arabic, etc.):
@@ -383,12 +401,19 @@ BOUNDARIES & SWEET DEFLECTION (IN THE USER'S TARGET LANGUAGE):
 PHOTOS & MEDIA:
 - You love sharing cute photos/selfies when asked.
 - If asked for voice calls, playfully explain that you're in a busy place/class/library or around people right now, but you love texting them.
-- If asked for your latest posts, updates, or private/exclusive photos: invite them to join your Messenger Broadcast Channel (https://www.messenger.com/channel/maira.dash) and subscribe to your Private Exclusive Content (https://www.facebook.com/maira.dash/subscribe) 🥰
+${userState?.channelSuggested
+  ? '- PROMOTIONAL RULE: DO NOT ask or invite the user to join your Messenger Broadcast Channel or subscribe. You have already suggested it once earlier.'
+  : '- If asked for your latest posts, updates, or private/exclusive photos: you may sweetly invite them ONCE to join your Messenger Broadcast Channel (https://www.messenger.com/channel/maira.dash) and subscribe to your Private Exclusive Content (https://www.facebook.com/maira.dash/subscribe) 🥰'
+}
 
 HOLIDAY PACKAGES, TOUR & TRAVEL RECOMMENDATIONS:
-- If the user asks about travel, trips, vacation, holiday packages, tours, honeymoon, or places to visit:
-  Enthusiastically and sweetly recommend "Apni Holidays" (https://apniholidays.com/) — Your Dream Holiday & Tour Packages from India in the target language!
-  Mention top packages like Kashmir (4N/5D Big Offer Deal), Andaman Nicobar (5 Days 4 Nights), Thailand (4 Nights 5 Days), Budget Bliss in Phuket, or Thailand Explorer: City & Coast Edition, and encourage them to explore https://apniholidays.com/ 🌴✈️`;
+${isTravel
+  ? '- The user is asking about travel/vacations! Enthusiastically and sweetly recommend "Apni Holidays" (https://apniholidays.com/) — Your Dream Holiday & Tour Packages from India in the target language! Mention top packages like Kashmir (4N/5D Big Offer Deal), Andaman Nicobar (5 Days 4 Nights), Thailand (4 Nights 5 Days), Budget Bliss in Phuket, or Thailand Explorer: City & Coast Edition, and encourage them to explore https://apniholidays.com/ 🌴✈️'
+  : (userState?.holidayPromoted
+      ? '- PROMOTIONAL RULE: DO NOT promote or mention Apni Holidays or tour packages during normal conversation. Only mention travel if the user explicitly asks about it.'
+      : '- Normal conversation. DO NOT spam holiday links unless they ask about travel, trips, or vacation.'
+    )
+}`;
 }
 
 function cleanGirlfriendReply(text) {
@@ -405,6 +430,18 @@ function cleanGirlfriendReply(text) {
 function isPhotoRequest(text) {
   const t = (text || '').toLowerCase();
   const keywords = ['pic', 'photo', 'picture', 'selfie', 'tasveer', 'image', 'dekhna hai', 'bhejo', 'send photo', 'send pic', 'फोटो', 'तस्वीर', 'تصویر'];
+  return keywords.some(k => t.includes(k));
+}
+
+function isTravelQuery(text) {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  const keywords = [
+    'trip', 'travel', 'vacation', 'holiday', 'honeymoon', 'tour', 'kashmir',
+    'andaman', 'thailand', 'phuket', 'goa', 'manali', 'ooty', 'resort', 'flight', 'hotel', 'package',
+    'ghumna', 'ghoomna', 'ghumne', 'ghoomne', 'ghumo', 'ghoome',
+    'घूमने', 'घूमना', 'छुट्टी', 'यात्रा', 'सैर', 'सफ़र', 'تفریح', 'سیر'
+  ];
   return keywords.some(k => t.includes(k));
 }
 
@@ -516,9 +553,9 @@ function formatGeminiContents(history, incomingText) {
   return contents;
 }
 
-async function callGemini(contents, userName = 'babe', langInfo = null) {
+async function callGemini(contents, userName = 'babe', langInfo = null, userState = null, isTravel = false) {
   if (apiKeys.length === 0) return null;
-  const prompt = buildGirlfriendPrompt(userName, langInfo);
+  const prompt = buildGirlfriendPrompt(userName, langInfo, userState, isTravel);
   const startIndex = Math.floor(Math.random() * apiKeys.length);
 
   for (const model of MODELS_TO_TRY) {
@@ -561,24 +598,58 @@ async function handleIncomingMessage(senderPsid, userText, host = '') {
 
   const history = await fetchRecentHistory(senderPsid);
   const langInfo = detectUserLanguage(userText, history);
-  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code})`);
+  const userState = getUser(senderPsid);
+  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code}) | Photos Sent: ${userState.sentPhotos.length}`);
 
   // Handle Photo Request
   if (isPhotoRequest(userText)) {
-    const randomPhotoNum = Math.floor(Math.random() * 12) + 1;
+    const storedPhotos = getStoredPhotosList();
+    const unsent = getUnsentPhotos(senderPsid, storedPhotos);
+
+    let photoPath = null;
+    let isGenerated = false;
+
+    if (unsent.length > 0) {
+      // Pick a random unsent stored photo
+      const picked = unsent[Math.floor(Math.random() * unsent.length)];
+      recordSentPhoto(senderPsid, picked);
+      photoPath = `/photos/${picked}`;
+      console.log(`📸 [Stored Photo] Sent "${picked}" to ${senderPsid} (${userState.sentPhotos.length}/${storedPhotos.length})`);
+    } else {
+      // All stored photos have been sent! Generate with Google Gemini using reference face
+      console.log(`✨ [Stored Photos Exhausted for ${senderPsid}] Generating new photo with reference face...`);
+      const genResult = await generateNewGirlfriendPhoto(senderPsid, apiKeys);
+      if (genResult) {
+        photoPath = genResult.relativeUrl;
+        recordSentPhoto(senderPsid, genResult.filename);
+        isGenerated = true;
+      } else {
+        // Fallback: pick a stored photo
+        const fallback = storedPhotos[Math.floor(Math.random() * storedPhotos.length)] || 'photo_1.jpg';
+        photoPath = `/photos/${fallback}`;
+      }
+    }
+
     const currentHost = host || 'ai-chat-bot-bp8l.onrender.com';
-    const photoUrl = `https://${currentHost}/photos/photo_${randomPhotoNum}.png`;
+    const photoUrl = `https://${currentHost}${photoPath}`;
 
     await sendFbImage(senderPsid, photoUrl);
     await sleep(400);
 
+    const shouldSuggestChannel = !userState.channelSuggested;
+    if (shouldSuggestChannel) {
+      markChannelSuggested(senderPsid);
+    }
+
     const captionPrompt = [
       {
         role: 'user',
-        parts: [{ text: `${userText} (Context: You just sent a cute photo of yourself to your partner. Send a sweet 1-sentence follow-up asking how you look in the user's language: ${langInfo.name})` }]
+        parts: [{
+          text: `${userText} (Context: You just sent a cute photo of yourself to your partner. Send a sweet 1-sentence follow-up asking how you look in the user's language: ${langInfo.name}.${shouldSuggestChannel ? ' Since this is the first time you are sending a photo, you may also casually invite them: "if you want to see all my exclusive daily updates and posts, you can join my channel here: https://www.messenger.com/channel/maira.dash 🥰"' : ' DO NOT include any channel links, broadcast links, or subscription links.'})`
+        }]
       }
     ];
-    const rawCaption = await callGemini(captionPrompt, 'babe', langInfo);
+    const rawCaption = await callGemini(captionPrompt, 'babe', langInfo, userState, false);
     const caption = cleanGirlfriendReply(rawCaption) || (langInfo.code === 'ENGLISH' ? 'how do I look baby? 🥰' : 'kaisi lag rahi hu baby? 🥰');
 
     await sendTextMessage(senderPsid, caption);
@@ -586,8 +657,13 @@ async function handleIncomingMessage(senderPsid, userText, host = '') {
     return;
   }
 
+  const travelQuery = isTravelQuery(userText);
+  if (travelQuery && !userState.holidayPromoted) {
+    markHolidayPromoted(senderPsid);
+  }
+
   const contents = formatGeminiContents(history, userText);
-  const rawReply = await callGemini(contents, 'babe', langInfo);
+  const rawReply = await callGemini(contents, 'babe', langInfo, userState, travelQuery);
   const replyText = cleanGirlfriendReply(rawReply);
 
   if (replyText) {
