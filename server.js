@@ -54,14 +54,14 @@ const pageAccessToken = process.env.FB_PAGE_ACCESS_TOKEN;
 const rawKeys = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
 const apiKeys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
 const verifyToken = process.env.FB_VERIFY_TOKEN || 'my_secure_fb_webhook_verify_token_12345';
-const modelName = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
+const modelName = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
 
 const MODELS_TO_TRY = [
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite-preview',
   'gemini-flash-latest',
-  'gemini-3.5-flash',
-  'gemini-3.6-flash',
-  'gemini-3.7-flash',
-  'gemini-flash-lite-latest'
+  'gemini-3.5-flash'
 ];
 
 const processedMids = new Set();
