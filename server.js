@@ -185,6 +185,14 @@ app.post('/webhook', (req, res) => {
         }
       }
 
+      // If user shared a link or attachment without accompanying text
+      if (!userText && !imageUrl && !hasSticker) {
+        const shareAtt = attachments.find(a => a.type === 'fallback' || a.type === 'share' || a.payload?.url);
+        if (shareAtt?.payload?.url) {
+          userText = shareAtt.payload.url;
+        }
+      }
+
       if (!senderPsid || (!userText && !imageUrl)) continue;
 
       console.log(`⚡ [Instant Webhook Received] From ${senderPsid}: "${userText.substring(0, 40)}..." (Has Real Image: ${Boolean(imageUrl)} | Has Sticker: ${hasSticker})`);
@@ -486,6 +494,9 @@ function cleanGirlfriendReply(text) {
   return cleaned;
 }
 
+const photoWords = '(?:photo|photos|pic|pics|picture|pictures|selfie|selfies|image|images|tasveer|tasveere|tasveerein|foto|fotos|dp)';
+const actionWords = '(?:send|give|share|show|bhejo|bhej|dikhao|dikhana|post|dekhna|dekhni|need|want|wanna|see|karo|bhej do|do na|do)';
+
 function isPhotoRequest(text) {
   if (!text) return false;
   const t = text.toLowerCase().trim();
@@ -505,23 +516,15 @@ function isPhotoRequest(text) {
   if (selfPatterns.some(p => t.includes(p))) return false;
 
   const reqPatterns = [
-    // English explicit photo requests
-    /send\s*(me\s*)?(your\s*)?(photo|pic|picture|selfie|image)/i,
-    /(share|show|give)\s*(me\s*)?(your\s*)?(photo|pic|picture|selfie|image|face)/i,
-    /(want|wanna|can\s*i)\s*(to\s*)?(see|get)\s*(your\s*)?(photo|pic|picture|selfie|face)/i,
-    /(see|view)\s*(your\s*)?(face|photo|pic)/i,
-    /your\s*(photo|pic|picture|selfie)/i,
-
-    // Hindi / Hinglish explicit photo requests
-    /(apni|apna|tumhari|teri|aapki)\s*(photo|pic|picture|selfie|tasveer|image)/i,
-    /(photo|pic|selfie|tasveer|image)\s*(bhejo|bhej|send|dikhao|dikhana|share|karo)/i,
-    /(bhejo|bhej|dikhao|dikhana|send)\s*(na\s*)?(apni|apna|tumhari|teri|ek)?\s*(photo|pic|selfie|tasveer)/i,
-    /(photo|pic|selfie)\s*(dekhna|dekhni)\s*(hai|h)/i,
-    /(chehra|face)\s*(dikhao|dekhna)/i,
-
-    // Devanagari Hindi explicit photo requests
-    /(अपनी|तुम्हारा|तुम्हारी|आपकी|एक)?\s*(फोटो|तस्वीर|सेल्फी)\s*(भेजो|दिखाओ|शेयर|करो|देखनी)/i,
-    /(फोटो|तस्वीर)\s*(भेजो|दिखाओ)/i,
+    // English actions + photo noun with optional descriptors (e.g. "give me your sexy pic", "need more of your pictures", "send hot photo")
+    new RegExp(`(?:${actionWords})\\s+(?:me\\s+)?(?:your\\s+|a\\s+|an\\s+|some\\s+)?(?:[a-z]+\\s+)?${photoWords}`, 'i'),
+    new RegExp(`(?:your|apni|apna|tumhari|teri|aapki)\\s+(?:[a-z]+\\s+)?${photoWords}`, 'i'),
+    new RegExp(`${photoWords}\\s+(?:${actionWords})`, 'i'),
+    new RegExp(`${photoWords}\\s+(?:bhejo|bhej|send|dikhao|dikhana|share|karo|do|dekhna|dekhni|bhej do)`, 'i'),
+    new RegExp(`(?:bhejo|bhej|dikhao|dikhana|send|give|share|do)\\s+(?:na\\s+)?(?:[a-z]+\\s+)?${photoWords}`, 'i'),
+    new RegExp(`(?:can|could|may)\\s+i\\s+(?:see|get|have)\\s+(?:your\\s+)?(?:[a-z]+\\s+)?${photoWords}`, 'i'),
+    new RegExp(`(?:need|want)\\s+(?:more\\s+of\\s+|more\\s+)?(?:your\\s+)?${photoWords}`, 'i'),
+    new RegExp(`(?:chehra|face)\\s*(?:dikhao|dekhna|dekhu|show|see)`, 'i'),
 
     // Photo exchange requests
     /(exchange|swap)\s*(photo|pic|image|selfie)/i,
@@ -530,9 +533,16 @@ function isPhotoRequest(text) {
     /(tum|aap)\s*(bhi\s*)?(bhejo|dikhao|share)/i,
     /(apni\s*bhi\s*bhejo|apna\s*bhi\s*bhejo)/i,
 
+    // Devanagari Hindi explicit photo requests
+    /(अपनी|तुम्हारा|तुम्हारी|आपकी|एक)?\s*([a-zA-Z\u0900-\u097F]+\s*)?(फोटो|तस्वीर|सेल्फी)\s*(भेजो|दिखाओ|शेयर|करो|देखनी|दो)/i,
+    /(फोटो|तस्वीर|सेल्फी)\s*(भेजो|दिखाओ|शेयर|करो)/i,
+
     // Urdu explicit photo requests
     /(تصویر|فوٹو)\s*(بھیجو|دکھاؤ)/i,
-    /(اپنی|تمہاری)\s*(تصویر|فوٹو)/i
+    /(اپنی|تمہاری)\s*(تصویر|فوٹو)/i,
+
+    // Short direct requests
+    /(photo\s*please|pic\s*please|please\s*photo|please\s*pic)/i
   ];
 
   return reqPatterns.some(regex => regex.test(t));
@@ -893,7 +903,7 @@ async function runAutoReplyWatcher() {
 
   while (true) {
     try {
-      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(5){id,message,from,created_time,attachments{id,name,image_data,file_url,mime_type},sticker}&limit=25&access_token=${encodeURIComponent(pageAccessToken)}`;
+      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(5){id,message,from,created_time,attachments{id,name,image_data,file_url,mime_type},shares,sticker}&limit=25&access_token=${encodeURIComponent(pageAccessToken)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
       if (res.ok) {
         const data = await res.json();
@@ -926,6 +936,9 @@ async function runAutoReplyWatcher() {
             }
 
             let rawText = (latest.message || '').trim();
+            if (!rawText && latest.shares?.data?.[0]?.link) {
+              rawText = latest.shares.data[0].link;
+            }
             if (!rawText && hasSticker) {
               const stickerAtt = attachments.find(a => a.image_data?.sticker_id || a.id?.startsWith('sticker_'));
               const sId = latest.sticker || stickerAtt?.image_data?.sticker_id;
