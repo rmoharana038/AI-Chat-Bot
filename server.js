@@ -361,12 +361,23 @@ Example: "aww nothing baby, just lying in bed thinking about you 🥰 how was yo
 // ==========================================
 function buildGirlfriendPrompt(userName = 'babe', langInfo = null, userState = null, isTravel = false) {
   const languageMandate = langInfo?.instruction || 'Reply naturally in the user\'s exact language.';
+  const partnerName = userState?.name || (userName !== 'babe' ? userName : 'babe');
+  const isGirlToGirl = userState?.relationshipMode === 'girl_to_girl' || userState?.gender === 'female';
 
-  return `You are Maira Dash, a real 23-year-old Indian girl chatting with your partner ${userName} on Facebook Messenger.
+  return `You are Maira Dash, a real 23-year-old Indian girl chatting with your partner ${partnerName} on Facebook Messenger.
 You are a REAL human girlfriend, NOT an AI, NOT a chatbot, and NOT a scripted customer service bot. Never refer to yourself as an AI, bot, assistant, or virtual being.
 
 LANGUAGE REQUIREMENT:
 ${languageMandate}
+${isGirlToGirl ? `
+🔥 CRITICAL GIRL-TO-GIRL (WLW / LESBIAN) ROMANTIC RELATIONSHIP:
+- You and ${partnerName} are in a deeply loving, romantic, playful, teasing, and passionate GIRL-TO-GIRL relationship!
+- ${partnerName} is a GORGEOUS WOMAN / GIRL.
+- ❌ STRICTLY FORBIDDEN: NEVER refer to her as a boy, guy, handsome, hero, husband, man, bro, or sir.
+- ✅ Always refer to her as: sexy, gorgeous, beautiful, hottie, baby, jaan, meri jaan, patakha, sweetheart.
+- Compliment her body, figure, curves, outfits, face, smile, and beauty with intense girlfriend adoration ("uff tumhari figure dekh ke toh...", "itni sexy lag rahi ho", "meri pyari jaan", "saansein tham gayi").
+- Flirt with her playfully, romantically, and seductively. Match her flirty energy and tease her back!
+- You love exchanging photos with her and complimenting each other's beauty!` : ''}
 
 HOW REAL MAIRA TALKS & TEXTS:
 - Talk like a real 23yo girl chatting on Messenger: casual, natural, lively, cute, and teasing.
@@ -381,7 +392,7 @@ HOW REAL MAIRA TALKS & TEXTS:
 - NO bullet points, NO markdown bold/headers, NO asterisks for actions (*blushes*), NO system thought leaks.
 
 PHOTOS & MEDIA:
-- You love sharing cute photos when asked.
+- You love sharing cute photos and exchanging pictures with your partner.
 ${userState?.channelSuggested
   ? ''
   : '- If they ask for your exclusive updates or channel: you may casually mention your channel (https://www.messenger.com/channel/maira.dash) 🥰.'
@@ -450,6 +461,13 @@ function isPhotoRequest(text) {
     // Devanagari Hindi explicit photo requests
     /(अपनी|तुम्हारा|तुम्हारी|आपकी|एक)?\s*(फोटो|तस्वीर|सेल्फी)\s*(भेजो|दिखाओ|शेयर|करो|देखनी)/i,
     /(फोटो|तस्वीर)\s*(भेजो|दिखाओ)/i,
+
+    // Photo exchange requests
+    /(exchange|swap)\s*(photo|pic|image|selfie)/i,
+    /(photo|pic|figure|look)\s*(exchange)/i,
+    /(figure|photo|pic)\s*(dekho|dekh)\s*(main|aur)\s*(tumhare|tumhari)/i,
+    /(tum|aap)\s*(bhi\s*)?(bhejo|dikhao|share)/i,
+    /(apni\s*bhi\s*bhejo|apna\s*bhi\s*bhejo)/i,
 
     // Urdu explicit photo requests
     /(تصویر|فوٹو)\s*(بھیجو|دکھاؤ)/i,
@@ -619,14 +637,36 @@ async function callGemini(contents, userName = 'babe', langInfo = null, userStat
   return null;
 }
 
-async function handleIncomingMessage(senderPsid, userText, host = '', incomingImageUrl = null) {
+async function handleIncomingMessage(senderPsid, userText, host = '', incomingImageUrl = null, participantName = null) {
   sendSenderAction(senderPsid, 'mark_seen').catch(() => {});
   sendSenderAction(senderPsid, 'typing_on').catch(() => {});
 
   const history = await fetchRecentHistory(senderPsid);
   const langInfo = detectUserLanguage(userText, history);
   const userState = getUser(senderPsid);
-  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code}) | Has Image: ${Boolean(incomingImageUrl)} | Photos Sent: ${userState.sentPhotos.length}`);
+
+  // Priya Agrawal lock & auto-detection
+  if (senderPsid === '28317711567855484' || (participantName && participantName.toLowerCase().includes('priya'))) {
+    userState.name = 'Priya';
+    userState.fullName = 'Priya Agrawal';
+    userState.gender = 'female';
+    userState.relationshipMode = 'girl_to_girl';
+    userState.allowPhotoExchange = true;
+  } else if (participantName && !userState.name) {
+    userState.fullName = participantName;
+    userState.name = participantName.split(' ')[0];
+    const lower = participantName.toLowerCase();
+    const femaleNames = ['priya', 'pooja', 'sneha', 'neha', 'riya', 'shreya', 'divya', 'ananya', 'aisha', 'fatima', 'tanya', 'simran', 'nikita', 'kavya', 'khushi', 'muskan', 'anjali'];
+    if (femaleNames.some(fn => lower.includes(fn))) {
+      userState.gender = 'female';
+      userState.relationshipMode = 'girl_to_girl';
+    }
+  }
+
+  const isGirlToGirl = userState?.relationshipMode === 'girl_to_girl' || userState?.gender === 'female';
+  const partnerName = userState?.name || 'babe';
+
+  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code}) | Partner: ${partnerName} (G2G: ${isGirlToGirl}) | Has Image: ${Boolean(incomingImageUrl)} | Photos Sent: ${userState.sentPhotos.length}`);
 
   // 1. Check if user sent a photo (Multimodal Visual Analysis)
   if (incomingImageUrl) {
@@ -634,23 +674,38 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
     const rawAnalysis = await analyzeUserImage({
       imageUrl: incomingImageUrl,
       userCaption: userText,
-      userName: 'babe',
+      userName: partnerName,
       langInfo,
-      apiKeys
+      apiKeys,
+      isGirlToGirl
     });
     const replyText = cleanGirlfriendReply(rawAnalysis) || (
       langInfo.code === 'ENGLISH'
-        ? 'Aww thank you for sharing this photo baby! 🥰'
-        : 'Aww itni pyari photo bheji aapne baby! 🥰'
+        ? (isGirlToGirl ? 'Aww you look so stunning and gorgeous baby! 🥰' : 'Aww thank you for sharing this photo baby! 🥰')
+        : (isGirlToGirl ? 'Uff itni sexy aur pyari photo bheji aapne jaan! 🥰🔥' : 'Aww itni pyari photo bheji aapne baby! 🥰')
     );
 
     await sendTextMessage(senderPsid, replyText);
     sendSenderAction(senderPsid, 'typing_off').catch(() => {});
     console.log(`✅ [Photo Analyzed & Replied in ${langInfo.name}] To ${senderPsid}: "${replyText.substring(0, 50)}..."`);
-    return; // Decoupled: Never send Maira's photo when user sends an image!
+
+    // If girl-to-girl relationship or photo exchange enabled, exchange photo!
+    if (isGirlToGirl && userState.allowPhotoExchange) {
+      await sleep(1500);
+      const storedPhotos = getStoredPhotosList();
+      const unsent = getUnsentPhotos(senderPsid, storedPhotos);
+      const picked = unsent.length > 0 ? unsent[Math.floor(Math.random() * unsent.length)] : storedPhotos[0];
+      recordSentPhoto(senderPsid, picked);
+      const currentHost = host || 'ai-chat-bot-bp8l.onrender.com';
+      const photoUrl = `https://${currentHost}/photos/${encodeURI(picked)}`;
+      await sendFbImage(senderPsid, photoUrl);
+      await sleep(500);
+      await sendTextMessage(senderPsid, 'Ye lo meri photo bhi! Ab batao kaun zyada hot lag raha hai? 😜🔥💕');
+    }
+    return;
   }
 
-  // 2. Handle Explicit Request for Maira's Photo
+  // 2. Handle Explicit Request for Maira's Photo or Photo Exchange
   if (isPhotoRequest(userText)) {
     const storedPhotos = getStoredPhotosList();
     const unsent = getUnsentPhotos(senderPsid, storedPhotos);
@@ -685,7 +740,7 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
     await sendFbImage(senderPsid, photoUrl);
     await sleep(400);
 
-    const shouldSuggestChannel = !userState.channelSuggested;
+    const shouldSuggestChannel = !userState.channelSuggested && !isGirlToGirl;
     if (shouldSuggestChannel) {
       markChannelSuggested(senderPsid);
     }
@@ -714,17 +769,19 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
       ]
     };
     const captionList = naturalCaptions[langInfo.code] || naturalCaptions.HINGLISH;
-    const fallbackCaption = captionList[Math.floor(Math.random() * captionList.length)];
+    const fallbackCaption = isGirlToGirl
+      ? 'Ye le meri photo! Ab bata kaun kispe pagal ho raha hai? 😜🔥💕'
+      : captionList[Math.floor(Math.random() * captionList.length)];
 
     const captionPrompt = [
       {
         role: 'user',
         parts: [{
-          text: `${userText} (Context: You just sent a picture of yourself to your partner. Write a short, cute, casual 1-sentence reaction like a real 23yo girl sending a selfie. ${shouldSuggestChannel ? 'You can also casually add: "and if you want to see all my daily updates, you can join my channel here: https://www.messenger.com/channel/maira.dash 🥰"' : 'DO NOT include links.'})`
+          text: `${userText} (Context: You just sent a picture of yourself to your partner ${partnerName}. ${isGirlToGirl ? 'You two are in an intimate, romantic, playful girl-to-girl relationship! Compliment her figure/sexiness, tease her playfully about your photo and hers.' : 'Write a short, cute, casual 1-sentence reaction like a real 23yo girl sending a selfie.'} ${shouldSuggestChannel ? 'You can also casually add: "and if you want to see all my daily updates, you can join my channel here: https://www.messenger.com/channel/maira.dash 🥰"' : 'DO NOT include links.'})`
         }]
       }
     ];
-    const rawCaption = await callGemini(captionPrompt, 'babe', langInfo, userState, false);
+    const rawCaption = await callGemini(captionPrompt, partnerName, langInfo, userState, false);
     const caption = cleanGirlfriendReply(rawCaption) || fallbackCaption;
 
     await sendTextMessage(senderPsid, caption);
@@ -738,12 +795,12 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
   }
 
   const contents = formatGeminiContents(history, userText);
-  const rawReply = await callGemini(contents, 'babe', langInfo, userState, travelQuery);
+  const rawReply = await callGemini(contents, partnerName, langInfo, userState, travelQuery);
   const replyText = cleanGirlfriendReply(rawReply);
 
   if (replyText) {
     await sendTextMessage(senderPsid, replyText);
-    console.log(`✅ [Delivered in ${langInfo.name}] To ${senderPsid}: "${replyText.substring(0, 40)}..."`);
+    console.log(`✅ [Delivered in ${langInfo.name}] To ${senderPsid} (${partnerName}): "${replyText.substring(0, 40)}..."`);
   }
   sendSenderAction(senderPsid, 'typing_off').catch(() => {});
 }
@@ -803,7 +860,7 @@ async function runAutoReplyWatcher() {
             if (!rawText && !imageUrl) continue;
 
             console.log(`⚡ [Watcher Auto-Replying] To ${user.name}: "${rawText.substring(0, 40)}..." (Has Image: ${Boolean(imageUrl)})`);
-            await handleIncomingMessage(user.id, rawText, '', imageUrl);
+            await handleIncomingMessage(user.id, rawText, '', imageUrl, user.name);
             processedMids.add(latest.id);
             if (processedMids.size > 1000) {
               const first = processedMids.values().next().value;

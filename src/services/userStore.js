@@ -97,6 +97,15 @@ export function markHolidayPromoted(psid) {
   scheduleSave();
 }
 
+export function updateUserProfile(psid, updates = {}) {
+  const user = getUser(psid);
+  if (!user) return null;
+  Object.assign(user, updates);
+  user.lastActive = new Date().toISOString();
+  scheduleSave();
+  return user;
+}
+
 export function getUnsentPhotos(psid, allPhotosList) {
   const user = getUser(psid);
   if (!user || !Array.isArray(allPhotosList)) return allPhotosList || [];
