@@ -418,16 +418,16 @@ ${isTravel
 function cleanGirlfriendReply(text) {
   if (!text) return '';
   let cleaned = text
-    .replace(/^(Drafting the Response|Here is the response|Drafting a response|Thinking Process|Thought Process|Response|Option \d+|Thought)[\s:#\-]*/gim, '')
+    .replace(/^(Drafting the Response|Here is the response|Drafting a response|Thinking Process|Thought Process|Selection|Response|Option \d+|Thought)[\s:#\-]*/gim, '')
     .replace(/^Thought:[\s\S]*?(?=\n\n|\n[A-Z])/i, '')
-    .replace(/^[*\s:#\-]*(Option|Response)\s*\d*[:\s*-]*/gim, '')
+    .replace(/^[*\s:#\-]*(Option|Response|Selection)\s*\d*[:\s*-]*/gim, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/!\[.*?\]\(.*?\)/g, '')
     .replace(/^[:\s\-*#]+/gm, '')
     .trim();
 
-  if (/^(drafting|thinking|response|here is)/i.test(cleaned) && cleaned.length < 35) {
+  if (/^(drafting|thinking|response|here is|selection)/i.test(cleaned) && cleaned.length < 35) {
     return '';
   }
   return cleaned;
