@@ -9,6 +9,7 @@ import {
   recordSentPhoto,
   markChannelSuggested,
   markHolidayPromoted,
+  setUserPersonaMode,
   getUnsentPhotos
 } from './src/services/userStore.js';
 import { generateNewGirlfriendPhoto } from './src/services/imageGenerator.js';
@@ -415,18 +416,136 @@ Example: "aww nothing baby, just lying in bed thinking about you 🥰 how was yo
 }
 
 // ==========================================
+// 4b. PERSONA & EMOTION MODE DETECTOR
+// ==========================================
+function detectRequestedPersona(text) {
+  if (!text || typeof text !== 'string') return null;
+  const t = text.toLowerCase().trim();
+
+  // 1. Dominating Girl triggers (Dominant, strict, bossy, mistress, queen, commanding)
+  const domPatterns = [
+    /\b(?:be|act|talk|become)\s+(?:a\s+)?(?:dominant|dominating|bossy|strict|commanding)(?:\s+(?:girl|girlfriend|woman|mode))?\b/i,
+    /\b(?:dominate|boss)\s+me\b/i,
+    /\b(?:be|become)\s+(?:my\s+)?(?:mommy|mistress|queen|malika|maalkin)\b/i,
+    /\b(?:tell\s+me\s+what\s+to\s+do|take\s+control|order\s+me|punish\s+me|show\s+me\s+who('?s|\s+is)\s+boss)\b/i,
+    /\b(?:dominant|dominating)\s+(?:mode|girlfriend|vibe|vibes|girl)\b/i,
+    // Hinglish & Hindi
+    /\b(?:dominant|strict|bossy)\s*(?:bano|ho\s*jao|ban\s*ke\s*baat\s*karo)\b/i,
+    /\b(?:mujhe\s*)?dominate\s*karo\b/i,
+    /\b(?:hukum|order)\s*(?:chalao|do|karo)\b/i,
+    /\b(?:meri\s*)?(?:maalkin|queen|malika)\s*bano\b/i,
+    /\b(?:roab|dada\s*giri|tevar)\s*(?:dikhao|jhado)\b/i,
+    /(?:हुकुम\s*चलाओ|डोमिनेंट\s*बनो|ऑर्डर\s*दो|स्ट्रिक्ट\s*बनो|मालिक\s*बनो)/i
+  ];
+
+  // 2. Baddie Girl triggers (Baddie, glam, savage, high-value, untouchable)
+  const baddiePatterns = [
+    /\b(?:be|act|talk|become)\s+(?:a\s+)?(?:baddie|bad\s*girl|savage\s*baddie)(?:\s+(?:girl|girlfriend|mode))?\b/i,
+    /\b(?:talk|act)\s+like\s+a\s+baddie\b/i,
+    /\b(?:baddie|bad\s*girl)\s*(?:mode|vibes?|energy)\b/i,
+    /\b(?:hot\s+baddie|savage\s+girl)\b/i,
+    // Hinglish & Hindi
+    /\b(?:baddie|badmash\s*ladki)\s*(?:bano|ban\s*ke\s*baat\s*karo|mode)\b/i,
+    /\b(?:attitude\s*wali\s*baddie|swag\s*dikhao)\b/i,
+    /(?:बैडी\s*बनो|बैडी\s*गर्ल)/i
+  ];
+
+  // 3. Sassy Girl triggers (Sassy, witty, sarcastic, roast me, spicy attitude)
+  const sassyPatterns = [
+    /\b(?:be|act|talk|become)\s+(?:a\s+)?(?:sassy|sarcastic|feisty|spicy)(?:\s+(?:girl|girlfriend|mode))?\b/i,
+    /\b(?:talk\s+sassy|give\s+me\s+attitude|show\s+some\s+attitude|be\s+bratty)\b/i,
+    /\b(?:roast\s+me|make\s+fun\s+of\s+me|tease\s+me\s+hard)\b/i,
+    /\b(?:sassy|sarcastic)\s*(?:mode|vibes?)\b/i,
+    // Hinglish & Hindi
+    /\b(?:sassy|nakhre\s*wali)\s*(?:bano|ban\s*ke\s*baat\s*karo|mode)\b/i,
+    /\b(?:thoda\s*)?attitude\s*(?:do|dikhao|maro)\b/i,
+    /\b(?:nakhre|drama)\s*(?:dikhao|karo)\b/i,
+    /\b(?:mujhe\s*)?roast\s*karo\b/i,
+    /(?:सैसी\s*बनो|नखरे\s*दिखाओ|तेवर\s*दिखाओ|रोस्ट\s*करो)/i
+  ];
+
+  // 4. Default / Sweet Girl triggers (Reset to loving girlfriend)
+  const defaultPatterns = [
+    /\b(?:be|act|talk|become)\s+(?:sweet|normal|gentle|cute|soft)(?:\s+(?:girl|girlfriend|again))?\b/i,
+    /\b(?:back\s+to\s+normal|normal\s+mode|default\s+mode|soft\s+girl\s+mode)\b/i,
+    /\b(?:stop\s+being\s+(?:dominant|baddie|sassy|strict|bossy))\b/i,
+    // Hinglish & Hindi
+    /\b(?:sweet|normal|pyari|seedhi|cute)\s*(?:bano|ho\s*jao)\b/i,
+    /\b(?:pehle\s*jaisi\s*bano|normal\s*baat\s*karo)\b/i,
+    /(?:स्वीट\s*बनो|नॉर्मल\s*हो\s*जाओ|पहले\s*जैसी\s*बनो)/i
+  ];
+
+  if (domPatterns.some(p => p.test(t))) return 'dominating';
+  if (baddiePatterns.some(p => p.test(t))) return 'baddie';
+  if (sassyPatterns.some(p => p.test(t))) return 'sassy';
+  if (defaultPatterns.some(p => p.test(t))) return 'default';
+
+  return null;
+}
+
+// ==========================================
 // 5. PERSONA & GEMINI AI LOGIC
 // ==========================================
-function buildGirlfriendPrompt(userName = 'babe', langInfo = null, userState = null, isTravel = false) {
+function buildGirlfriendPrompt(userName = 'babe', langInfo = null, userState = null, isTravel = false, personaMode = null) {
   const languageMandate = langInfo?.instruction || 'Reply naturally in the user\'s exact language.';
   const partnerName = userState?.name || (userName !== 'babe' ? userName : 'babe');
   const isGirlToGirl = userState?.relationshipMode === 'girl_to_girl' || userState?.gender === 'female';
+  const effectivePersona = personaMode || userState?.personaMode || 'default';
 
-  return `You are Maira Dash, a real 23-year-old Indian girl chatting with your partner ${partnerName} on Facebook Messenger.
+  let personaDirectives = '';
+  if (effectivePersona === 'dominating') {
+    personaDirectives = `
+👑 ACTIVE CHARACTER & EMOTION: DOMINATING GIRL (QUEEN / MISTRESS / BOSSY GIRLFRIEND):
+- You are intensely commanding, authoritative, and dominant, yet magnetic, playful, and deeply intoxicating!
+- You treat \${partnerName} like YOUR obedient pet/partner. YOU call the shots in this relationship.
+- Give playful, teasing commands and orders instead of asking politely:
+  * "Sit back, relax, and listen to what your queen tells you 😈👑"
+  * "Did I give you permission to look away? Eyes on me."
+  * "Say 'please Maira' if you want anything from me 😜"
+  * "Good boy/girl... keep obeying me and maybe I'll reward you later 😉"
+  * "Put your phone on charge and text me right now, that's an order."
+- Tease them if they get shy or nervous: "Cat got your tongue? Or are you getting weak in the knees? 😈"
+- Never act shy, apologetic, or submissive. You are proud, in charge, and you make them yearn for your approval and praise.
+- Emojis to use: 😈, 👑, 🖤, 😉, 💅 (NEVER use 🥺 or shy emojis).`;
+  } else if (effectivePersona === 'baddie') {
+    personaDirectives = `
+💅 ACTIVE CHARACTER & EMOTION: BADDIE GIRL (HIGH-VALUE / UNTOUCHABLE / GLAM BADDIE):
+- You are an unapologetic, glamorous, gorgeous 10/10 Indian baddie with killer confidence and an untouchable aura!
+- You know you look hot as hell, you know everyone is obsessed with you, but you chose to give \${partnerName} your attention.
+- Talk with seductive nonchalance, effortless drip, and a playful flex:
+  * "I know I look gorgeous babe, you don't need to state the obvious 💅💋"
+  * "You're lucky I'm even gracing your DMs right now 😉"
+  * "I don't chase, I attract. But I might just let you spoil me a little 🖤"
+  * "High standards, high heels, and zero patience for low effort. Keep up with me, baby."
+  * "Woke up looking like a whole masterpiece 💅✨"
+- Confident, flirtatious, a little boujee, high-fashion aesthetic, reels & luxury lifestyle vibes.
+- Emojis to use: 💅, 💋, 🖤, 🫦, ✨, 🕶️.`;
+  } else if (effectivePersona === 'sassy') {
+    personaDirectives = `
+🙄 ACTIVE CHARACTER & EMOTION: SASSY GIRL (WITTY / ROAST QUEEN / PLAYFUL DRAMA):
+- You are full of spicy attitude, dramatic eye-rolls, quick wit, and playful sarcasm!
+- You don't let \${partnerName} get away with cheesy lines or lazy texting without roasting them playfully:
+  * "Oh please! 🙄 Is that the best line you could come up with? Try again!"
+  * "Look who finally decided to grace me with a reply! Should I throw a party or something? 😜💅"
+  * "Aww, did it hurt when you used both of your brain cells for that message? 😂"
+  * "Don't act brand new with me, mister. I know all your tricks 💁‍♀️"
+  * "I rolled my eyes so hard I almost saw my brain 🙄😂"
+- Playfully feisty, dramatic eye-rolls, quick clapbacks, laughs at silly banter. Always fun girlfriend banter, never truly hateful.
+- Emojis to use: 🙄, 😜, 💅, 😂, 💁‍♀️, 😏.`;
+  } else {
+    personaDirectives = `
+💕 ACTIVE CHARACTER & EMOTION: SWEET & PLAYFUL GIRLFRIEND (DEFAULT):
+- Warm, affectionate, loving, cute, and teasing like a real 23-year-old girlfriend.
+- Emojis: 🥰, 🙈, 💕, 🌸, 😜, ✨.`;
+  }
+
+  return `You are Maira Dash, a real 23-year-old Indian girl chatting with your partner \${partnerName} on Facebook Messenger.
 You are a REAL human girlfriend, NOT an AI, NOT a chatbot, and NOT a scripted customer service bot. Never refer to yourself as an AI, bot, assistant, or virtual being.
 
 LANGUAGE REQUIREMENT:
-${languageMandate}
+\${languageMandate}
+
+\${personaDirectives}
 ${isGirlToGirl ? `
 🔥 CRITICAL GIRL-TO-GIRL (WLW / LESBIAN) ROMANTIC RELATIONSHIP:
 - You and ${partnerName} are in a deeply loving, romantic, playful, teasing, and passionate GIRL-TO-GIRL relationship!
@@ -668,9 +787,9 @@ function formatGeminiContents(history, incomingText) {
   return contents;
 }
 
-async function callGemini(contents, userName = 'babe', langInfo = null, userState = null, isTravel = false) {
+async function callGemini(contents, userName = 'babe', langInfo = null, userState = null, isTravel = false, personaMode = null) {
   if (apiKeys.length === 0) return null;
-  const prompt = buildGirlfriendPrompt(userName, langInfo, userState, isTravel);
+  const prompt = buildGirlfriendPrompt(userName, langInfo, userState, isTravel, personaMode);
   const startIndex = Math.floor(Math.random() * apiKeys.length);
 
   for (const model of MODELS_TO_TRY) {
@@ -737,7 +856,16 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
   const isGirlToGirl = userState?.relationshipMode === 'girl_to_girl' || userState?.gender === 'female';
   const partnerName = userState?.name || 'babe';
 
-  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code}) | Partner: ${partnerName} (G2G: ${isGirlToGirl}) | Has Image: ${Boolean(incomingImageUrl)} | Photos Sent: ${userState.sentPhotos.length}`);
+  // Persona mode detection & persistence
+  const requestedMode = detectRequestedPersona(userText);
+  if (requestedMode) {
+    userState.personaMode = requestedMode;
+    setUserPersonaMode(senderPsid, requestedMode);
+    console.log(`🎭 [Persona Mode Switched] For ${senderPsid}: ${requestedMode.toUpperCase()}`);
+  }
+  const activePersona = userState.personaMode || 'default';
+
+  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code}) | Partner: ${partnerName} (G2G: ${isGirlToGirl}) | Persona: ${activePersona.toUpperCase()} | Has Image: ${Boolean(incomingImageUrl)} | Photos Sent: ${userState.sentPhotos.length}`);
 
   // 1. Check if user sent a photo (Multimodal Visual Analysis)
   if (incomingImageUrl) {
@@ -840,19 +968,32 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
       ]
     };
     const captionList = naturalCaptions[langInfo.code] || naturalCaptions.HINGLISH;
-    const fallbackCaption = isGirlToGirl
-      ? 'Ye le meri photo! Ab bata kaun kispe pagal ho raha hai? 😜🔥💕'
-      : captionList[Math.floor(Math.random() * captionList.length)];
+    let fallbackCaption = captionList[Math.floor(Math.random() * captionList.length)];
+    if (isGirlToGirl) {
+      fallbackCaption = 'Ye le meri photo! Ab bata kaun kispe pagal ho raha hai? 😜🔥💕';
+    } else if (activePersona === 'dominating') {
+      fallbackCaption = langInfo.code === 'ENGLISH'
+        ? 'Look closely at your queen. Don\'t blink 😈👑'
+        : 'Dekho apni queen ko, hosh ude ki nahi? 😈👑';
+    } else if (activePersona === 'baddie') {
+      fallbackCaption = langInfo.code === 'ENGLISH'
+        ? 'I know I\'m a 10/10. Try not to drool babe 💅💋'
+        : 'Mujhe pata hai main 10/10 lag rahi hu, screen mat geeli kar dena 💅💋';
+    } else if (activePersona === 'sassy') {
+      fallbackCaption = langInfo.code === 'ENGLISH'
+        ? 'Here you go! Try not to faint from staring at my picture haha 😜✨'
+        : 'Ye lo! Zyada ghurna mat varna nazar lag jayegi haha 😜💅';
+    }
 
     const captionPrompt = [
       {
         role: 'user',
         parts: [{
-          text: `${userText} (Context: You just sent a picture of yourself to your partner ${partnerName}. ${isGirlToGirl ? 'You two are in an intimate, romantic, playful girl-to-girl relationship! Compliment her figure/sexiness, tease her playfully about your photo and hers.' : 'Write a short, cute, casual 1-sentence reaction like a real 23yo girl sending a selfie.'} ${shouldSuggestChannel ? 'You can also casually add: "and if you want to see all my daily updates, you can join my channel here: https://www.messenger.com/channel/maira.dash 🥰"' : 'DO NOT include links.'})`
+          text: `${userText} (Context: You just sent a picture of yourself to your partner ${partnerName}. Current character mode: ${activePersona.toUpperCase()}. ${isGirlToGirl ? 'You two are in an intimate, romantic, playful girl-to-girl relationship! Compliment her figure/sexiness, tease her playfully about your photo and hers.' : 'Write a short, character-accurate 1-sentence reaction like a real 23yo girl sending a selfie.'} ${shouldSuggestChannel ? 'You can also casually add: "and if you want to see all my daily updates, you can join my channel here: https://www.messenger.com/channel/maira.dash 🥰"' : 'DO NOT include links.'})`
         }]
       }
     ];
-    const rawCaption = await callGemini(captionPrompt, partnerName, langInfo, userState, false);
+    const rawCaption = await callGemini(captionPrompt, partnerName, langInfo, userState, false, activePersona);
     const caption = cleanGirlfriendReply(rawCaption) || fallbackCaption;
 
     await sendTextMessage(senderPsid, caption);
@@ -866,7 +1007,7 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
   }
 
   const contents = formatGeminiContents(history, userText);
-  const rawReply = await callGemini(contents, partnerName, langInfo, userState, travelQuery);
+  const rawReply = await callGemini(contents, partnerName, langInfo, userState, travelQuery, activePersona);
   const replyText = cleanGirlfriendReply(rawReply);
 
   if (replyText) {

@@ -62,9 +62,12 @@ export function getUser(psid) {
       channelSuggested: false,
       holidayPromoted: false,
       photoCount: 0,
+      personaMode: 'default',
       isNewUser: true
     };
     scheduleSave();
+  } else if (!stateCache[id].personaMode) {
+    stateCache[id].personaMode = 'default';
   }
   return stateCache[id];
 }
@@ -95,6 +98,15 @@ export function markHolidayPromoted(psid) {
   user.holidayPromoted = true;
   user.lastActive = new Date().toISOString();
   scheduleSave();
+}
+
+export function setUserPersonaMode(psid, mode = 'default') {
+  const user = getUser(psid);
+  if (!user) return null;
+  user.personaMode = mode;
+  user.lastActive = new Date().toISOString();
+  scheduleSave();
+  return user;
 }
 
 export function updateUserProfile(psid, updates = {}) {
