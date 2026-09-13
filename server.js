@@ -56,11 +56,10 @@ const verifyToken = process.env.FB_VERIFY_TOKEN || 'my_secure_fb_webhook_verify_
 const modelName = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
 
 const MODELS_TO_TRY = [
-  modelName,
-  'gemini-flash-lite-latest',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite-preview-02-05'
+  'gemini-3.6-flash',
+  'gemini-3.7-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest'
 ];
 
 const processedMids = new Set();
