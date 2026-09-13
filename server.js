@@ -681,8 +681,8 @@ async function runAutoReplyWatcher() {
 
   setInterval(async () => {
     try {
-      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(3){id,message,from,created_time}&limit=15&access_token=${encodeURIComponent(pageAccessToken)}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(3){id,message,from,created_time}&limit=30&access_token=${encodeURIComponent(pageAccessToken)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(4500) });
       if (!res.ok) return;
       const data = await res.json();
 
@@ -697,14 +697,14 @@ async function runAutoReplyWatcher() {
         if (processedMids.has(latest.id)) continue;
 
         const ageMs = Date.now() - new Date(latest.created_time).getTime();
-        // If message arrived within last 5 minutes and not yet replied
-        if (ageMs < 5 * 60 * 1000) {
+        // If message arrived within Facebook's official 24-hour standard messaging window
+        if (ageMs < 24 * 60 * 60 * 1000) {
           processedMids.add(latest.id);
-          const userText = (latest.message || '').trim();
-          if (userText) {
-            console.log(`⚡ [Watcher Picked Up] Unanswered message from ${user.name}: "${userText}"`);
-            await handleIncomingMessage(user.id, userText);
-          }
+          const rawText = (latest.message || '').trim();
+          const userText = rawText || '(User sent an attachment, photo or sticker. React playfully and sweetly like a real girlfriend)';
+          console.log(`⚡ [Watcher Auto-Replying] To ${user.name}: "${userText.substring(0, 40)}..."`);
+          await handleIncomingMessage(user.id, userText);
+          await sleep(1200); // Safety pause between messages to avoid Facebook rate limits
         }
       }
     } catch (e) {
