@@ -631,7 +631,7 @@ async function handleIncomingMessage(senderPsid, userText, host = '') {
     }
 
     const currentHost = host || 'ai-chat-bot-bp8l.onrender.com';
-    const photoUrl = `https://${currentHost}${photoPath}`;
+    const photoUrl = `https://${currentHost}${encodeURI(photoPath)}`;
 
     await sendFbImage(senderPsid, photoUrl);
     await sleep(400);
