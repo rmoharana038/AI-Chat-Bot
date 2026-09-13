@@ -103,7 +103,7 @@ export default function SettingsModal({
             </div>
 
             <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
-              <ShieldCheck className="w-3.5 h-3.5" /> Stored locally in your browser. Also configurable as VITE_GEMINI_API_KEY in Netlify!
+              <ShieldCheck className="w-3.5 h-3.5" /> Stored locally in your browser. Also configurable as VITE_GEMINI_API_KEY in Render!
             </div>
           </div>
 
