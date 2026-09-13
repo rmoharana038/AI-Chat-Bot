@@ -418,13 +418,20 @@ ${isTravel
 
 function cleanGirlfriendReply(text) {
   if (!text) return '';
-  return text
+  let cleaned = text
+    .replace(/^(Drafting the Response|Here is the response|Drafting a response|Thinking Process|Thought Process|Response|Option \d+|Thought)[\s:#\-]*/gim, '')
+    .replace(/^Thought:[\s\S]*?(?=\n\n|\n[A-Z])/i, '')
     .replace(/^[*\s:#\-]*(Option|Response)\s*\d*[:\s*-]*/gim, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/!\[.*?\]\(.*?\)/g, '')
     .replace(/^[:\s\-*#]+/gm, '')
     .trim();
+
+  if (/^(drafting|thinking|response|here is)/i.test(cleaned) && cleaned.length < 35) {
+    return '';
+  }
+  return cleaned;
 }
 
 function isPhotoRequest(text) {
@@ -573,7 +580,7 @@ async function callGemini(contents, userName = 'babe', langInfo = null, userStat
             contents,
             generationConfig: {
               temperature: 0.8,
-              maxOutputTokens: 250
+              maxOutputTokens: 500
             }
           }),
           signal: AbortSignal.timeout(5000)
