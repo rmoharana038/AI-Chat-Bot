@@ -55,14 +55,14 @@ function getGenericPhotoReaction(langInfo = null) {
   const code = langInfo?.code || 'ENGLISH';
   switch (code) {
     case 'HINDI_DEVANAGARI':
-      return 'अरे वाह! इतनी प्यारी तस्वीर भेजी आपने 🥰 मुझे बहुत अच्छी लगी!';
+      return 'अरे वाह! इतना प्यारा सा रिएक्शन भेजा आपने 🥰 मुझे बहुत अच्छा लगा!';
     case 'URDU':
-      return 'ارے واہ! اتنی پیاری تصویر بھیجی آپ نے 🥰 مجھے بہت پسند آئی!';
+      return 'ارے واہ! اتنا پیارا ری ایکشن بھیجا آپ نے 🥰 مجھے بہت پسند آیا!';
     case 'HINGLISH':
-      return 'Aww itni pyari photo bheji aapne baby! 🥰 Bohot achhi lag rahi hai!';
+      return 'Aww itna sweet reaction baby! 🥰 Mujhe bohot accha laga!';
     case 'ENGLISH':
     default:
-      return 'Aww thank you for sending this photo baby! 🥰 Looking at it right now!';
+      return 'Aww thank you baby! 🥰 That was so sweet of you!';
   }
 }
 
@@ -148,7 +148,10 @@ Carefully inspect and analyze what is shown in this photo, and reply naturally l
    - Food / Drinks: React deliciously ("yummm that looks so yummy! Now I'm hungry too 😋").
    - Nature / Places / Travel: React admiringly ("wow such a beautiful view! Where is this? We should visit here together! 🌸").
    - Flowers / Good Morning Greetings (e.g. roses, cards): Sweetly acknowledge the greeting ("aww such a gorgeous rose! Good morning my love 🌹").
-   - Pets / Animals: React adorably ("awww look at that little cutie! 🥺").
+   - Digital Stickers, Memes, Emojis, or Graphic Icons:
+     * If this is an emoji icon, sticker (e.g. thumbs up, heart icon, smiley face), meme, or cartoon graphic:
+     * NEVER call it a personal photograph or picture of the user!
+     * React playfully to the emoji or sticker itself ("haha itna cute sticker!", "thumbs up kyun de rahe ho? 😜").
    - Everyday items, memes, or work: React playfully and casually.
 
 STRICT CONSTRAINTS:

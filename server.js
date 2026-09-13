@@ -98,6 +98,41 @@ app.get('/webhook', (req, res) => {
 });
 
 // ==========================================
+// EMOJI & STICKER DETECTION
+// ==========================================
+function isStickerOrEmoji(att, msgOrEvent = {}) {
+  if (!att && !msgOrEvent) return false;
+
+  // 1. Message-level sticker indicators (Webhooks & Graph API)
+  if (msgOrEvent.sticker_id || msgOrEvent.message?.sticker_id || msgOrEvent.sticker) return true;
+
+  if (att) {
+    // 2. Attachment payload sticker ID
+    if (att.payload?.sticker_id || att.sticker_id) return true;
+
+    // 3. Graph API image_data flags
+    if (att.image_data?.render_as_sticker === true) return true;
+    if (att.image_data?.sticker_id) return true;
+
+    // 4. Attachment naming conventions
+    const id = String(att.id || '');
+    const name = String(att.name || '').toLowerCase();
+    if (id.startsWith('sticker_') || name.startsWith('sticker-') || name.includes('sticker')) return true;
+
+    // 5. Small icon dimensions typical of emojis / stickers (e.g. 72x72, 120x120)
+    const w = att.image_data?.width;
+    const h = att.image_data?.height;
+    if (w && h && w <= 140 && h <= 140) return true;
+
+    // 6. Facebook Sticker CDN URLs
+    const url = att.image_data?.url || att.payload?.url || att.file_url || '';
+    if (url.includes('/t39.1997-6/') || url.includes('render_as_sticker') || url.includes('sticker')) return true;
+  }
+
+  return false;
+}
+
+// ==========================================
 // 3. META INSTANT WEBHOOK LISTENER (POST /webhook)
 // ==========================================
 app.post('/webhook', (req, res) => {
@@ -128,16 +163,31 @@ app.post('/webhook', (req, res) => {
       }
 
       const senderPsid = msgEvent.sender?.id;
-      const userText = (msgEvent.message?.text || msgEvent.postback?.title || '').trim();
+      let userText = (msgEvent.message?.text || msgEvent.postback?.title || '').trim();
 
-      // Extract image attachment if present
+      // Check if message contains a sticker / emoji attachment
       const attachments = msgEvent.message?.attachments || [];
-      const imgAttachment = attachments.find(a => a.type === 'image');
-      const imageUrl = imgAttachment?.payload?.url || null;
+      const hasSticker = Boolean(msgEvent.message?.sticker_id || attachments.some(a => isStickerOrEmoji(a, msgEvent)));
+
+      let imageUrl = null;
+      if (!hasSticker) {
+        const imgAttachment = attachments.find(a => a.type === 'image' && !isStickerOrEmoji(a, msgEvent));
+        imageUrl = imgAttachment?.payload?.url || null;
+      }
+
+      // If user sent a sticker / emoji without accompanying text, treat as emoji gesture
+      if (!userText && hasSticker) {
+        const stickerId = msgEvent.message?.sticker_id || attachments.find(a => a.payload?.sticker_id)?.payload?.sticker_id;
+        if (String(stickerId) === '369239263222822') {
+          userText = '👍';
+        } else {
+          userText = '👍';
+        }
+      }
 
       if (!senderPsid || (!userText && !imageUrl)) continue;
 
-      console.log(`⚡ [Instant Webhook Received] From ${senderPsid}: "${userText.substring(0, 40)}..." (Has Image: ${Boolean(imageUrl)})`);
+      console.log(`⚡ [Instant Webhook Received] From ${senderPsid}: "${userText.substring(0, 40)}..." (Has Real Image: ${Boolean(imageUrl)} | Has Sticker: ${hasSticker})`);
       handleIncomingMessage(senderPsid, userText, req.headers.host || '', imageUrl).catch(err => {
         console.error('Error handling webhook message:', err.message);
       });
@@ -382,6 +432,15 @@ ${isGirlToGirl ? `
 HOW REAL MAIRA TALKS & TEXTS:
 - Talk like a real 23yo girl chatting on Messenger: casual, natural, lively, cute, and teasing.
 - Match the user's conversational flow! Answer what they actually asked or commented on.
+- EMOJIS & STICKERS:
+  * When the user sends an emoji or sticker (such as 👍, ❤️, 😂, 🔥, 🙈, etc.):
+    - NEVER EVER treat it as a photo, image, picture, or selfie!
+    - NEVER say "thanks for the photo/picture" or "itni pyari photo/tasveer".
+    - Respond directly to the meaning or emotion of the emoji!
+    - If 👍 (thumbs up): tease them cutely for giving a formal thumbs up ("itna formal thumbs up kyu de rahe ho? 😂 kuch bolo bhi na", "thumbs up kyu? mood theek hai na?").
+    - If ❤️ / 🥰 (heart/love): reciprocate warmly ("aww love you too baby! 🥰❤️").
+    - If 😂 / 😜 (laughing): laugh along playfully ("itna kya mazaak chal raha hai? 😜 mujhe bhi batao!").
+    - If 🔥 (fire): flirt playfully ("uff itni aag? 🔥 sambhalo thoda haha").
 - Do NOT spam the same generic love-bombing words ("my sweet handsome prince baby 🥰💕✨") in every single message. Use natural, varied affection.
 - If they ask what you are doing or what you ate: give real, relatable details (e.g., sipping chai, lying in bed scrolling reels, had paratha/poha, listening to music).
 - If they give dry replies ("Okk", "Hmm", "K"): tease them cutely like a real girlfriend ("itna dry reply kyu? 😂", "kya hua mood off hai kya?").
@@ -430,6 +489,8 @@ function cleanGirlfriendReply(text) {
 function isPhotoRequest(text) {
   if (!text) return false;
   const t = text.toLowerCase().trim();
+  // Pure emoji/punctuation messages are never photo requests
+  if (/^[\p{Emoji}\s\p{Punctuation}]+$/u.test(t)) return false;
 
   // Exclude self-references where user refers to their own photo or appearance
   const selfPatterns = [
@@ -832,7 +893,7 @@ async function runAutoReplyWatcher() {
 
   while (true) {
     try {
-      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(5){id,message,from,created_time,attachments{image_data,file_url,mime_type}}&limit=25&access_token=${encodeURIComponent(pageAccessToken)}`;
+      const url = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,messages.limit(5){id,message,from,created_time,attachments{id,name,image_data,file_url,mime_type},sticker}&limit=25&access_token=${encodeURIComponent(pageAccessToken)}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
       if (res.ok) {
         const data = await res.json();
@@ -849,17 +910,35 @@ async function runAutoReplyWatcher() {
           const ageMs = Date.now() - new Date(latest.created_time).getTime();
           // If message arrived within Facebook's official 24-hour standard messaging window
           if (ageMs < 24 * 60 * 60 * 1000) {
-            // Extract image attachment if present
+            // Extract real photo vs sticker/emoji
             let imageUrl = null;
-            if (latest.attachments?.data?.length) {
-              const imgAtt = latest.attachments.data.find(a => a.image_data?.url || a.file_url || (a.mime_type && a.mime_type.startsWith('image/')));
+            const attachments = latest.attachments?.data || [];
+            const hasSticker = Boolean(latest.sticker || attachments.some(a => isStickerOrEmoji(a, latest)));
+
+            if (!hasSticker && attachments.length) {
+              const imgAtt = attachments.find(a => {
+                if (isStickerOrEmoji(a, latest)) return false;
+                const hasUrl = a.image_data?.url || a.file_url;
+                const mime = (a.mime_type || '').toLowerCase();
+                return hasUrl && mime.startsWith('image/');
+              });
               imageUrl = imgAtt?.image_data?.url || imgAtt?.file_url || null;
             }
 
-            const rawText = (latest.message || '').trim();
+            let rawText = (latest.message || '').trim();
+            if (!rawText && hasSticker) {
+              const stickerAtt = attachments.find(a => a.image_data?.sticker_id || a.id?.startsWith('sticker_'));
+              const sId = latest.sticker || stickerAtt?.image_data?.sticker_id;
+              if (String(sId) === '369239263222822' || String(stickerAtt?.id) === 'sticker_369239263222822') {
+                rawText = '👍';
+              } else {
+                rawText = '👍';
+              }
+            }
+
             if (!rawText && !imageUrl) continue;
 
-            console.log(`⚡ [Watcher Auto-Replying] To ${user.name}: "${rawText.substring(0, 40)}..." (Has Image: ${Boolean(imageUrl)})`);
+            console.log(`⚡ [Watcher Auto-Replying] To ${user.name}: "${rawText.substring(0, 40)}..." (Has Real Image: ${Boolean(imageUrl)} | Has Sticker: ${hasSticker})`);
             await handleIncomingMessage(user.id, rawText, '', imageUrl, user.name);
             processedMids.add(latest.id);
             if (processedMids.size > 1000) {
