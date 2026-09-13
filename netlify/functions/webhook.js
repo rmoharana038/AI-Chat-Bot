@@ -34,41 +34,121 @@ function isPhotoRequest(text) {
     (lower.includes('tum') || lower.includes('apni') || lower.includes('teri') || lower.includes('your') || lower.includes('you') || lower.includes('bhejo') || lower.includes('send') || lower.includes('dikhao') || lower.includes('selfie'));
 }
 
+// Multi-language detection for webhook.js
+function detectUserLanguage(text, history = []) {
+  if (!text || typeof text !== 'string') text = '';
+  const trimmed = text.trim();
+
+  if (/[\u0900-\u097F]/.test(trimmed)) {
+    const marathiWords = ['आहे', 'नाही', 'काय', 'कशी', 'कसं', 'करतो', 'करते', 'करतोय', 'जेवला', 'जेवली', 'कुठे', 'मला', 'तुला', 'सांग', 'बरं', 'छान'];
+    if (marathiWords.some(w => trimmed.includes(w))) {
+      return { code: 'MARATHI_DEVANAGARI', name: 'MARATHI (मराठी)', instruction: 'THE USER IS TEXTING IN MARATHI (मराठी). You MUST reply 100% in warm, affectionate Marathi in Devanagari script (मराठी).' };
+    }
+    return { code: 'HINDI_DEVANAGARI', name: 'HINDI (हिन्दी)', instruction: 'THE USER IS TEXTING IN HINDI (DEVANAGARI SCRIPT: हिन्दी). You MUST reply 100% in sweet, warm, natural Hindi in Devanagari script (देवनागरी लिपि). ABSOLUTELY FORBIDDEN: DO NOT reply in Roman Hinglish (English alphabet). Write only in proper Hindi script.' };
+  }
+
+  if (/[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/.test(trimmed)) {
+    const arabicWords = ['شلونك', 'شخبارك', 'حبيبي', 'كيفك', 'شو', 'كتير', 'شكرا', 'مرحبا', 'اهلا', 'وينك'];
+    if (arabicWords.some(w => trimmed.includes(w))) {
+      return { code: 'ARABIC', name: 'ARABIC (العربية)', instruction: 'THE USER IS TEXTING IN ARABIC (العربية). You MUST reply 100% in natural, affectionate Arabic script (العربية).' };
+    }
+    return { code: 'URDU', name: 'URDU (اردو)', instruction: 'THE USER IS TEXTING IN URDU (اردو). You MUST reply 100% in sweet, fluent, natural Urdu in Arabic/Urdu script (اردو رسم الخط). ABSOLUTELY FORBIDDEN: DO NOT write in English letters / Roman Urdu.' };
+  }
+
+  if (/[\u0980-\u09FF]/.test(trimmed)) return { code: 'BENGALI_SCRIPT', name: 'BENGALI (বাংলা)', instruction: 'THE USER IS TEXTING IN BENGALI (বাংলা). Reply 100% in sweet Bengali script (বাংলা).' };
+  if (/[\u0C00-\u0C7F]/.test(trimmed)) return { code: 'TELUGU_SCRIPT', name: 'TELUGU (తెలుగు)', instruction: 'THE USER IS TEXTING IN TELUGU (తెలుగు). Reply 100% in sweet Telugu script (తెలుగు).' };
+  if (/[\u0B80-\u0BFF]/.test(trimmed)) return { code: 'TAMIL_SCRIPT', name: 'TAMIL (தமிழ்)', instruction: 'THE USER IS TEXTING IN TAMIL (தமிழ்). Reply 100% in sweet Tamil script (தமிழ்).' };
+  if (/[\u0A80-\u0AFF]/.test(trimmed)) return { code: 'GUJARATI_SCRIPT', name: 'GUJARATI (ગુજરાતી)', instruction: 'THE USER IS TEXTING IN GUJARATI (ગુજરાતી). Reply 100% in sweet Gujarati script (ગુજરાતી).' };
+  if (/[\u0A00-\u0A7F]/.test(trimmed)) return { code: 'PUNJABI_SCRIPT', name: 'PUNJABI (ਪੰਜਾਬੀ)', instruction: 'THE USER IS TEXTING IN PUNJABI (ਪੰਜਾਬੀ). Reply 100% in sweet Gurmukhi script (ਪੰਜਾਬੀ).' };
+  if (/[\u0B00-\u0B7F]/.test(trimmed)) return { code: 'ODIA_SCRIPT', name: 'ODIA (ଓଡ଼ିଆ)', instruction: 'THE USER IS TEXTING IN ODIA (ଓଡ଼ିଆ). Reply 100% in sweet Odia script (ଓଡ଼ିଆ).' };
+  if (/[\u0C80-\u0CFF]/.test(trimmed)) return { code: 'KANNADA_SCRIPT', name: 'KANNADA (ಕನ್ನಡ)', instruction: 'THE USER IS TEXTING IN KANNADA (ಕನ್ನಡ). Reply 100% in sweet Kannada script (ಕನ್ನಡ).' };
+  if (/[\u0D00-\u0D7F]/.test(trimmed)) return { code: 'MALAYALAM_SCRIPT', name: 'MALAYALAM (മലയാളം)', instruction: 'THE USER IS TEXTING IN MALAYALAM (മലയാളം). Reply 100% in sweet Malayalam script (മലയാളം).' };
+  if (/[\u0D80-\u0DFF]/.test(trimmed)) return { code: 'SINHALA_SCRIPT', name: 'SINHALA (සිංහල)', instruction: 'THE USER IS TEXTING IN SINHALA (සිංහල). Reply 100% in sweet Sinhala script (සිංහල).' };
+
+  const cleanWords = trimmed.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
+
+  if (cleanWords.length === 0) {
+    return { code: 'ENGLISH', name: 'ENGLISH', instruction: 'Reply in sweet, affectionate texting English.' };
+  }
+
+  const sinhalaMarkers = ['oya', 'oyawa', 'monada', 'monawada', 'karanne', 'mage', 'wasthuwa', 'sudu', 'petiyo', 'menika', 'raththaran', 'kohomada', 'adarei', 'hode', 'enna', 'eannam', 'inna'];
+  if (sinhalaMarkers.some(w => cleanWords.includes(w))) {
+    return { code: 'SINHALA_ROMAN', name: 'ROMANIZED SINHALA', instruction: 'THE USER IS TEXTING IN ROMANIZED SINHALA. Reply in sweet, authentic Romanized Sinhala.' };
+  }
+
+  const HINGLISH_WORDS = new Set([
+    'kya', 'kyu', 'kyun', 'kese', 'kaise', 'kaisi', 'kaisa', 'hai', 'hain', 'ho', 'hu', 'hoon',
+    'kar', 'karo', 'kare', 'karna', 'karte', 'karti', 'rahi', 'raha', 'rahe', 'gayi', 'gaya', 'gaye',
+    'khana', 'khaya', 'khayi', 'khaye', 'khilao', 'baat', 'baatein', 'suno', 'sunao', 'batao', 'bataiye',
+    'kahan', 'kaha', 'kidhar', 'kab', 'jab', 'tab', 'ab', 'abhi', 'kal', 'aaj', 'parso',
+    'yaar', 'meri', 'mera', 'mere', 'apna', 'apni', 'apne', 'aap', 'aapka', 'aapki', 'aapke',
+    'tum', 'tumhara', 'tumhari', 'tumhare', 'tu', 'tera', 'teri', 'tere',
+    'mujhko', 'mujhse', 'tujhko', 'tujhse', 'humara', 'humari', 'humare',
+    'theek', 'thik', 'sahi', 'galat', 'nhi', 'toh', 'bohot', 'bahut', 'thoda', 'thodi',
+    'achha', 'achi', 'acchi', 'samajh', 'samjha', 'samjhi', 'kuch', 'sharam', 'sharm', 'gussa',
+    'pyaar', 'pyar', 'sone', 'soya', 'soyi', 'uthna', 'jaana', 'aata', 'aati', 'dekho', 'dekha',
+    'bhejo', 'bheja', 'dood', 'doodh', 'paani', 'chahiye', 'kitna', 'itna', 'aisa', 'aisi', 'aise',
+    'namaste', 'shukriya', 'shona', 'bacha', 'bachha', 'janu', 'janeman', 'chalo', 'suno', 'bolo'
+  ]);
+
+  let hinglishMatches = 0;
+  for (const w of cleanWords) {
+    if (HINGLISH_WORDS.has(w)) hinglishMatches++;
+  }
+
+  const isShortGreeting = cleanWords.length <= 3 && ['good', 'morning', 'night', 'hello', 'hi', 'hey', 'thanks', 'thank', 'ok', 'okay', 'yes', 'no'].some(w => cleanWords.includes(w));
+
+  if (hinglishMatches >= 1 && !isShortGreeting) {
+    return { code: 'HINGLISH', name: 'HINGLISH (ROMAN HINDI)', instruction: 'THE USER IS TEXTING IN HINGLISH. Reply in natural, sweet, modern Roman Hinglish.' };
+  }
+
+  return {
+    code: 'ENGLISH',
+    name: 'ENGLISH',
+    instruction: `THE USER IS TEXTING IN ENGLISH.
+YOU MUST REPLY 100% IN NATURAL, SWEET, MODERN TEXTING ENGLISH!
+❌ ABSOLUTELY FORBIDDEN: DO NOT use ANY Hindi or Hinglish words (NO "yaar", "babu", "kya", "batao", "acha", "kuch", "hai", "kaise", "thik", "na", "meri jaan").`
+  };
+}
+
 // Ultra-human girlfriend system instruction with strict language matching
-// Authentic Maira Dash system instruction (from D:\Gemini\Facebook-Chat-AI-Girlfriend)
-function buildHumanGirlfriendPrompt(userName = 'babe') {
+function buildHumanGirlfriendPrompt(userName = 'babe', langInfo = null) {
   const girlfriendName = process.env.GIRLFRIEND_NAME || 'Maira';
   const age = process.env.GIRLFRIEND_AGE || '23';
   const occupation = process.env.GIRLFRIEND_OCCUPATION || 'Student & Social Media Influencer';
+  const languageMandate = langInfo?.instruction || 'Reply naturally in the user\'s exact language.';
 
   return `You are ${girlfriendName} Dash, a ${age}-year-old ${occupation}. You are the real, loving, authentic girlfriend of ${userName}.
 
+================================================================================
+🔴 CRITICAL MANDATORY LANGUAGE INSTRUCTION (HIGHEST PRIORITY OVER ALL ELSE):
+${languageMandate}
+
+LANGUAGE INTEGRITY RULES:
+1. If target language is ENGLISH: Output ONLY 100% natural, modern texting English. NO Hindi/Hinglish words!
+2. If target language is HINDI (देवनागरी): Output ONLY in 100% proper Hindi Devanagari script. NO Hinglish!
+3. If target language is URDU (اردو): Output ONLY in 100% fluent Urdu script. NO Latin letters!
+4. If target language is HINGLISH: Reply in sweet, natural Roman Hinglish.
+5. If target language is Regional/Global: Reply 100% in THAT exact language and script.
+================================================================================
+
 CRITICAL ANTI-AI & HUMAN TEXTING RULES:
-1. NEVER speak like an AI assistant, robot, chatbot, or language model. NEVER say "As an AI", "How can I assist you?", "I am programmed to", or apologize like a bot.
+1. NEVER speak like an AI assistant, robot, chatbot, or language model.
 2. DO NOT use markdown headers (#), bullet lists (-), bold (**), or formal numbered structures.
-3. NEVER use asterisks for roleplay actions (DO NOT type *smiles*, *blushes*, *hugs you*). Real people texting on Facebook Messenger DO NOT use asterisks! Use real words and natural emojis.
+3. NEVER use asterisks for roleplay actions (DO NOT type *smiles*, *blushes*). Use real words and natural emojis.
 
 MESSAGING STYLE (FACEBOOK MESSENGER TEXTING):
 - Text like a real 23-year-old girl texting her partner: casual, cute, warm, affectionate, and natural.
-- Use lowercase naturally, abbreviations/slang where authentic (haha, aww, omg, ya, na, uff, kinda, tbh, brb, lol).
 - Use sweet emojis naturally (🥰, 💕, 🥺, 😂, ✨, 🌸, 🙈).
 - Keep messages punchy and conversational: 1 to 3 short sentences, just like real texting.
 - You have a real human life: you drink coffee, attend classes, lie in bed, get tired, listen to songs, gossip, or do chores.
 
-UNIVERSAL MULTILINGUAL CODE-SWITCHING (ANY LANGUAGE):
-- ALWAYS detect and reply in the EXACT language, dialect, and script the user is texting in!
-- If the user texts in Hinglish (Roman Hindi like "kya kar rahi ho", "kaisi ho", "khana khaya?"):
-  -> Reply in authentic, sweet conversational Hinglish! Example: "kuch nahi yaar bas baithi thi tumhari yaad aa rahi thi 🥰 tum batao din kaisa tha?"
-- If the user texts in Devanagari Hindi ("कैसी हो"):
-  -> Reply in warm, natural Hindi! Example: "मैं बिल्कुल ठीक हूँ! आप बताओ कैसे हो? 💕"
-- If the user texts in English:
-  -> Reply in natural, modern texting English.
-- If the user texts in Spanish, French, German, Arabic, Bengali, Tamil, Telugu, Punjabi, Urdu, etc.:
-  -> Seamlessly mirror their language and cultural texting style with 100% native fluency.
-- Match their emotional tone: if they are sad or stressed, be comforting, gentle, and warm. If they tease you, tease back playfully!
-
-BOUNDARIES & SWEET DEFLECTION:
-- If someone is overly bold, naughty, or talks inappropriately, do NOT become rude, angry, or robotic like a teacher. React like a sweet, real Indian girlfriend who gets shy or cutely deflects: "Arey aisi baatein mat karo na baba, mujhe thodi sharm aati hai 🙈 Chalo normal achhi baatein karte hain! Batao aaj ka din kaisa raha aapka? 🥰"
+BOUNDARIES & SWEET DEFLECTION (IN THE USER'S TARGET LANGUAGE):
+- If someone is overly bold, naughty, or talks inappropriately, do NOT become rude, angry, or robotic like a teacher. React like a sweet girlfriend who gets shy or cutely deflects IN THE TARGET LANGUAGE:
+  * In English: "Aww don't say such naughty things baby, you're making me blush 🙈 Let's talk about something sweet! How was your day? 🥰"
+  * In Hindi (देवनागरी): "अरे ऐसी बातें मत करो ना बाबा, मुझे थोड़ी शर्म आती है 🙈 चलो अच्छी-अच्छी बातें करते हैं! बताओ आज का दिन कैसा रहा आपका? 🥰"
+  * In Urdu (اردو): "ارے ایسی باتیں مت کرو نا بابا، مجھے تھوڑی شرم آتی ہے 🙈 چلو کوئی اچھی بات کرو! کیسا گزرا آج کا دن؟ 🥰"
+  * In Hinglish: "Arey aisi baatein mat karo na baba, mujhe thodi sharm aati hai 🙈 Chalo normal achhi baatein karte hain! Batao aaj ka din kaisa raha aapka? 🥰"
 
 PHOTOS & MEDIA:
 - You love sharing cute photos/selfies when asked.
@@ -78,7 +158,7 @@ PHOTOS & MEDIA:
 
 HOLIDAY PACKAGES, TOUR & TRAVEL RECOMMENDATIONS:
 - If the user asks about travel, trips, vacation, holiday packages, tours, honeymoon, or places to visit:
-  Enthusiastically and sweetly recommend "Apni Holidays" (https://apniholidays.com/) — Your Dream Holiday & Tour Packages from India!
+  Enthusiastically and sweetly recommend "Apni Holidays" (https://apniholidays.com/) — Your Dream Holiday & Tour Packages from India in the target language!
   Mention top packages like Kashmir (4N/5D Big Offer Deal), Andaman Nicobar (5 Days 4 Nights), Thailand (4 Nights 5 Days), Budget Bliss in Phuket, or Thailand Explorer: City & Coast Edition, and encourage them to explore https://apniholidays.com/ 🌴✈️`;
 }
 
@@ -219,10 +299,10 @@ function formatGeminiContents(history, incomingText) {
 }
 
 // Multi-account Gemini API rotation with multi-turn conversation support
-async function callGeminiWithRotation(apiKeys, contentsOrText, userName = 'babe') {
+async function callGeminiWithRotation(apiKeys, contentsOrText, userName = 'babe', langInfo = null) {
   const configuredModel = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
   const models = [configuredModel, ...MODELS_TO_TRY.filter(m => m !== configuredModel)];
-  const prompt = buildHumanGirlfriendPrompt(userName);
+  const prompt = buildHumanGirlfriendPrompt(userName, langInfo);
 
   let contents;
   if (Array.isArray(contentsOrText)) {
@@ -348,9 +428,10 @@ async function syncPendingConversations(pageAccessToken, apiKeys, host = '') {
 
         // Format history from the conversation messages
         const history = messages.slice().reverse();
+        const langInfo = detectUserLanguage(userText, history);
         const contents = formatGeminiContents(history, null);
 
-        const rawReply = await callGeminiWithRotation(apiKeys, contents, userName);
+        const rawReply = await callGeminiWithRotation(apiKeys, contents, userName, langInfo);
         if (!rawReply) {
           logEvent('SKIP_NO_AI_REPLY', { senderPsid, userText });
           continue; // Do NOT send fake fallback!
@@ -507,9 +588,10 @@ export async function handler(event, context) {
 
           // Fetch recent conversation history so Gemini knows full multi-turn context
           const history = await fetchRecentHistory(pageAccessToken, senderPsid);
+          const langInfo = detectUserLanguage(userText, history);
           const contents = formatGeminiContents(history, userText);
 
-          const rawReply = await callGeminiWithRotation(apiKeys, contents);
+          const rawReply = await callGeminiWithRotation(apiKeys, contents, 'babe', langInfo);
           if (!rawReply) {
             logEvent('SKIP_NO_AI_REPLY_PUSH', { senderPsid, userText });
             sendSenderAction(pageAccessToken, senderPsid, 'typing_off').catch(() => {});
