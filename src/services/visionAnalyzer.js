@@ -6,9 +6,10 @@
  */
 
 const MODELS_TO_TRY = [
+  'gemini-flash-latest',
+  'gemini-3.5-flash',
   'gemini-3.6-flash',
   'gemini-3.7-flash',
-  'gemini-3.5-flash-lite',
   'gemini-flash-lite-latest'
 ];
 
@@ -181,8 +182,9 @@ STRICT CONSTRAINTS:
               ]
             }],
             generationConfig: {
-              temperature: 0.8,
-              maxOutputTokens: 300
+              temperature: 0.85,
+              maxOutputTokens: 600,
+              thinkingConfig: { thinkingBudget: 0 }
             }
           }),
           signal: AbortSignal.timeout(8000)

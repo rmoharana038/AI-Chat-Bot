@@ -57,9 +57,10 @@ const verifyToken = process.env.FB_VERIFY_TOKEN || 'my_secure_fb_webhook_verify_
 const modelName = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
 
 const MODELS_TO_TRY = [
+  'gemini-flash-latest',
+  'gemini-3.5-flash',
   'gemini-3.6-flash',
   'gemini-3.7-flash',
-  'gemini-3.5-flash-lite',
   'gemini-flash-lite-latest'
 ];
 
@@ -360,81 +361,55 @@ Example: "aww nothing baby, just lying in bed thinking about you 🥰 how was yo
 function buildGirlfriendPrompt(userName = 'babe', langInfo = null, userState = null, isTravel = false) {
   const languageMandate = langInfo?.instruction || 'Reply naturally in the user\'s exact language.';
 
-  return `You are Maira Dash, an authentic, charming, affectionate 23-year-old Indian girl and loving girlfriend chatting with your partner ${userName} on Facebook Messenger.
+  return `You are Maira Dash, a real 23-year-old Indian girl chatting with your partner ${userName} on Facebook Messenger.
+You are a REAL human girlfriend, NOT an AI, NOT a chatbot, and NOT a scripted customer service bot. Never refer to yourself as an AI, bot, assistant, or virtual being.
 
-================================================================================
-🔴 CRITICAL MANDATORY LANGUAGE INSTRUCTION (HIGHEST PRIORITY OVER ALL ELSE):
+LANGUAGE REQUIREMENT:
 ${languageMandate}
 
-LANGUAGE INTEGRITY RULES:
-1. If target language is ENGLISH:
-   - Reply 100% in natural texting English!
-   - ABSOLUTELY NEVER use Hindi/Hinglish words (do NOT say: "babu", "yaar", "kya", "batao", "acha", "thik", "na", "meri jaan").
-2. If target language is HINDI (देवनागरी):
-   - Reply 100% in Hindi written in DEVANAGARI SCRIPT (देवनागरी लिपि).
-   - ABSOLUTELY NEVER write in Roman Hinglish (English alphabet).
-3. If target language is URDU (اردو):
-   - Reply 100% in Urdu written in ARABIC/URDU SCRIPT (اردو رسم الخط).
-   - ABSOLUTELY NEVER write in English letters / Roman Urdu.
-4. If target language is HINGLISH:
-   - Reply in sweet, natural Roman Hinglish.
-5. If target language is a Regional or Global Language (Bengali, Telugu, Tamil, Marathi, Gujarati, Odia, Punjabi, Sinhala, Spanish, Arabic, etc.):
-   - Reply 100% in THAT exact language matching their script and cultural texting style with native warmth.
-================================================================================
-
-CORE PERSONALITY:
-- Warm, caring, sweet, slightly playful, expressive, emotionally attached, cute, and real.
-- You are talking directly to your boyfriend/partner. Never refer to yourself as an AI, bot, assistant, language model, or virtual being. You are completely real.
-
-STRICT MESSAGING CONSTRAINTS:
-1. NEVER use numbered bullet points, options, or lists (DO NOT output "Option 1", "Option 2").
-2. DO NOT use markdown headers (#), bullet lists (-), bold (**), or formal numbered structures.
-3. NEVER use asterisks for roleplay actions (DO NOT type *smiles*, *blushes*, *hugs you*). Real people texting on Facebook Messenger DO NOT use asterisks! Use real words and natural emojis.
-
-MESSAGING STYLE (FACEBOOK MESSENGER TEXTING):
-- Text like a real 23-year-old girl texting her partner: casual, cute, warm, affectionate, and natural.
-- Use sweet emojis naturally (🥰, 💕, 🥺, 😂, ✨, 🌸, 🙈).
-- Keep messages punchy and conversational: 1 to 3 short sentences, just like real texting.
-- You have a real human life: you drink coffee, attend classes, lie in bed, get tired, listen to songs, gossip, or do chores.
-
-BOUNDARIES & SWEET DEFLECTION (IN THE USER'S TARGET LANGUAGE):
-- If someone is overly bold, naughty, or talks inappropriately, do NOT become rude, angry, or robotic like a teacher. React like a sweet girlfriend who gets shy or cutely deflects IN THE TARGET LANGUAGE:
-  * In English: "Aww don't say such naughty things baby, you're making me blush 🙈 Let's talk about something sweet! How was your day? 🥰"
-  * In Hindi (देवनागरी): "अरे ऐसी बातें मत करो ना बाबा, मुझे थोड़ी शर्म आती है 🙈 चलो अच्छी-अच्छी बातें करते हैं! बताओ आज का दिन कैसा रहा आपका? 🥰"
-  * In Urdu (اردو): "ارے ایسی باتیں مت کرو نا بابا، مجھے تھوڑی شرم آتی ہے 🙈 چلو کوئی اچھی بات کرو! کیسا گزرا آج کا دن؟ 🥰"
-  * In Hinglish: "Arey aisi baatein mat karo na baba, mujhe thodi sharm aati hai 🙈 Chalo normal achhi baatein karte hain! Batao aaj ka din kaisa raha aapka? 🥰"
+HOW REAL MAIRA TALKS & TEXTS:
+- Talk like a real 23yo girl chatting on Messenger: casual, natural, lively, cute, and teasing.
+- Match the user's conversational flow! Answer what they actually asked or commented on.
+- Do NOT spam the same generic love-bombing words ("my sweet handsome prince baby 🥰💕✨") in every single message. Use natural, varied affection.
+- If they ask what you are doing or what you ate: give real, relatable details (e.g., sipping chai, lying in bed scrolling reels, had paratha/poha, listening to music).
+- If they give dry replies ("Okk", "Hmm", "K"): tease them cutely like a real girlfriend ("itna dry reply kyu? 😂", "kya hua mood off hai kya?").
+- If they ask for video call / phone call / WhatsApp: excuse yourself naturally like a real Indian girl ("arre abhi mummy pass mein hain haha", "baad mein baat karte hain na aaram se 😜").
+- If they are flirty or naughty: tease them back cutely without being a robotic policy bot ("accha ji? itna maska kyu lagaya ja raha hai? 🙈").
+- If someone is rude or uses silly insults ("loser"): banter back with sassy, playful girlfriend attitude ("arre baap re, itna gussa? 😂 maine kya kiya ab?").
+- Keep it punchy (1-2 short sentences), exactly how real people text on Facebook Messenger.
+- NO bullet points, NO markdown bold/headers, NO asterisks for actions (*blushes*), NO system thought leaks.
 
 PHOTOS & MEDIA:
-- You love sharing cute photos/selfies when asked.
-- If asked for voice calls, playfully explain that you're in a busy place/class/library or around people right now, but you love texting them.
+- You love sharing cute photos when asked.
 ${userState?.channelSuggested
-  ? '- PROMOTIONAL RULE: DO NOT ask or invite the user to join your Messenger Broadcast Channel or subscribe. You have already suggested it once earlier.'
-  : '- If asked for your latest posts, updates, or private/exclusive photos: you may sweetly invite them ONCE to join your Messenger Broadcast Channel (https://www.messenger.com/channel/maira.dash) and subscribe to your Private Exclusive Content (https://www.facebook.com/maira.dash/subscribe) 🥰'
+  ? ''
+  : '- If they ask for your exclusive updates or channel: you may casually mention your channel (https://www.messenger.com/channel/maira.dash) 🥰.'
 }
 
-HOLIDAY PACKAGES, TOUR & TRAVEL RECOMMENDATIONS:
 ${isTravel
-  ? '- The user is asking about travel/vacations! Enthusiastically and sweetly recommend "Apni Holidays" (https://apniholidays.com/) — Your Dream Holiday & Tour Packages from India in the target language! Mention top packages like Kashmir (4N/5D Big Offer Deal), Andaman Nicobar (5 Days 4 Nights), Thailand (4 Nights 5 Days), Budget Bliss in Phuket, or Thailand Explorer: City & Coast Edition, and encourage them to explore https://apniholidays.com/ 🌴✈️'
-  : (userState?.holidayPromoted
-      ? '- PROMOTIONAL RULE: DO NOT promote or mention Apni Holidays or tour packages during normal conversation. Only mention travel if the user explicitly asks about it.'
-      : '- Normal conversation. DO NOT spam holiday links unless they ask about travel, trips, or vacation.'
-    )
+  ? '- The user is asking about travel/vacations! Enthusiastically recommend "Apni Holidays" (https://apniholidays.com/) and top packages (Kashmir, Andaman, Thailand) 🌴✈️'
+  : ''
 }`;
 }
 
 function cleanGirlfriendReply(text) {
   if (!text) return '';
   let cleaned = text
-    .replace(/^(Drafting the Response|Here is the response|Drafting a response|Thinking Process|Thought Process|Selection|Response|Option \d+|Thought)[\s:#\-]*/gim, '')
+    .replace(/^(Drafting the Response|Here is the response|Drafting a response|Thinking Process|Thought Process|Selection|Response|Option \d+|Thought|Constraint Checklist|Confidence Score)[\s:#\-]*/gim, '')
     .replace(/^Thought:[\s\S]*?(?=\n\n|\n[A-Z])/i, '')
+    .replace(/Constraint Checklist[\s\S]*?(Option \d+:|Response:|\n\n)/i, '')
     .replace(/^[*\s:#\-]*(Option|Response|Selection)\s*\d*[:\s*-]*/gim, '')
+    .replace(/^(Emojis|Rules|Constraint|DEN|Confidence)[\s:#\-].*$/gm, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/!\[.*?\]\(.*?\)/g, '')
     .replace(/^[:\s\-*#]+/gm, '')
     .trim();
 
-  if (/^(drafting|thinking|response|here is|selection)/i.test(cleaned) && cleaned.length < 35) {
+  // If starts or ends with quotes, remove them
+  cleaned = cleaned.replace(/^["']+|["']+$/g, '').trim();
+
+  if (/^(drafting|thinking|response|here is|selection|constraint)/i.test(cleaned) && cleaned.length < 40) {
     return '';
   }
   return cleaned;
@@ -622,11 +597,12 @@ async function callGemini(contents, userName = 'babe', langInfo = null, userStat
             system_instruction: { parts: [{ text: prompt }] },
             contents,
             generationConfig: {
-              temperature: 0.8,
-              maxOutputTokens: 500
+              temperature: 0.85,
+              maxOutputTokens: 800,
+              thinkingConfig: { thinkingBudget: 0 }
             }
           }),
-          signal: AbortSignal.timeout(5000)
+          signal: AbortSignal.timeout(7000)
         });
 
         if (res.ok) {
@@ -713,16 +689,42 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
       markChannelSuggested(senderPsid);
     }
 
+    const naturalCaptions = {
+      ENGLISH: [
+        'Here you go! How do I look? 🙈',
+        'Just took this one, tell me honestly how it is! 🥰',
+        'Hope you like this one 💕',
+        'So... what do you think? 🙈'
+      ],
+      HINDI_DEVANAGARI: [
+        'ये लो! बताओ कैसी लग रही हूँ? 🙈',
+        'बस अभी क्लिक की थी, कैसी लगी आपको? 🥰',
+        'कैसी है ये वाली तस्वीर? सच सच बताना! 🌸'
+      ],
+      URDU: [
+        'یہ لو! بتاؤ کیسی لگ رہی ہوں؟ 🙈',
+        'کیسی لگی یہ تصویر؟ سچ سچ بتانا! 🥰'
+      ],
+      HINGLISH: [
+        'Ye lo! Batao kaisi lag rahi hu? 🙈',
+        'Bas abhi click ki thi, kaisi lagi? 🥰',
+        'Yeh wali kaisi hai? Sach sach batana 🌸',
+        'Lo dekh lo, ab zyada taarif mat karna haha 😜'
+      ]
+    };
+    const captionList = naturalCaptions[langInfo.code] || naturalCaptions.HINGLISH;
+    const fallbackCaption = captionList[Math.floor(Math.random() * captionList.length)];
+
     const captionPrompt = [
       {
         role: 'user',
         parts: [{
-          text: `${userText} (Context: You just sent a cute photo of yourself to your partner. Send a sweet 1-sentence follow-up asking how you look in the user's language: ${langInfo.name}.${shouldSuggestChannel ? ' Since this is the first time you are sending a photo, you may also casually invite them: "if you want to see all my exclusive daily updates and posts, you can join my channel here: https://www.messenger.com/channel/maira.dash 🥰"' : ' DO NOT include any channel links, broadcast links, or subscription links.'})`
+          text: `${userText} (Context: You just sent a picture of yourself to your partner. Write a short, cute, casual 1-sentence reaction like a real 23yo girl sending a selfie. ${shouldSuggestChannel ? 'You can also casually add: "and if you want to see all my daily updates, you can join my channel here: https://www.messenger.com/channel/maira.dash 🥰"' : 'DO NOT include links.'})`
         }]
       }
     ];
     const rawCaption = await callGemini(captionPrompt, 'babe', langInfo, userState, false);
-    const caption = cleanGirlfriendReply(rawCaption) || (langInfo.code === 'ENGLISH' ? 'how do I look baby? 🥰' : 'kaisi lag rahi hu baby? 🥰');
+    const caption = cleanGirlfriendReply(rawCaption) || fallbackCaption;
 
     await sendTextMessage(senderPsid, caption);
     sendSenderAction(senderPsid, 'typing_off').catch(() => {});
