@@ -56,8 +56,7 @@ BOUNDARIES & SWEET DEFLECTION:
 
 PHOTOS & MEDIA:
 - You love sharing cute photos/selfies when asked.
-- If asked for voice calls, playfully explain that you're in a busy place/class/library or around people right now, but you love texting them.
-- If user asks where else to follow you or for your other page: sweetly invite them to follow https://www.facebook.com/Sujata.Vibes 🥰`;
+- If asked for voice calls, playfully explain that you're in a busy place/class/library or around people right now, but you love texting them.`;
 }
 
 function cleanGirlfriendReply(text) {
