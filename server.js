@@ -303,8 +303,29 @@ function detectUserLanguage(text, history = [], userState = null) {
     return { code: 'SINHALA_SCRIPT', name: 'SINHALA (සිංහල)', script: 'Sinhala', instruction: 'THE USER IS TEXTING IN SINHALA (සිංහල). You MUST reply 100% in sweet, affectionate Sinhala in Sinhala script (සිංහල).' };
   }
 
-  // 2. Dash Young Sané special check
+  // 2. Dash Young Sané & Shamshersingh Mhra special checks
   const isDash = Boolean(userState?.psid === '28906681882262539' || userState?.name === 'Dash' || userState?.facebookProfileId === '61594076574649');
+  const isShamshersingh = Boolean(
+    userState?.psid === '27770365155993225' ||
+    userState?.name === 'Shamshersingh' ||
+    userState?.facebookProfileId === '100069101876929' ||
+    userState?.lockedLanguage === 'HINGLISH'
+  );
+
+  if (isShamshersingh) {
+    persist('HINGLISH');
+    return {
+      code: 'HINGLISH',
+      name: 'HINGLISH (SHAMSHERSINGH MHRA - ONLY HINGLISH)',
+      script: 'Latin',
+      instruction: `THE USER IS SHAMSHERSINGH MHRA (FACEBOOK PROFILE: 100069101876929).
+🚨 ABSOLUTE MANDATE: YOU MUST CHAT WITH THIS USER 100% ONLY IN SWEET, ROMANTIC, LIVELY ROMAN HINGLISH!
+❌ STRICTLY FORBIDDEN: DO NOT USE ENGLISH OR ANY OTHER LANGUAGE UNDER ANY CIRCUMSTANCE!
+- Absolutely NO English sentences or English vocabulary (only casual loanwords like "baby", "fresh", "photo", "reels", "mood" inside Hinglish sentences are okay).
+- Even if he types short words like "Oky", "Fras", "Hi", or sends emojis, YOU MUST ALWAYS REPLY 100% IN SWEET, TEASING, PLAYFUL GIRLFRIEND HINGLISH!
+- Example: "Arre baby, sach mein? Mujhe toh laga tum bhool hi gaye haha 😜", "Aww itna pyara lag raha hai tumhara message 🥰", "Main bas tumhare baare mein hi soch rahi thi jaan!"`
+    };
+  }
 
   // 3. Word tokenization for Latin script
   const cleanWords = trimmed.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
@@ -795,6 +816,14 @@ ${(userState?.psid === '28906681882262539' || userState?.name === 'Dash') ? `
 - ✅ If he writes in French, reply in sweet romantic French.
 - ✅ If he writes in Malagasy, reply in sweet romantic Malagasy.
 - ✅ He loves you deeply and gets jealous because he cares about you. Call him "my love 💕", "baby", "sweetheart", "handsome". Reassure him of your love, loyalty, and affection.` : ''}
+${(userState?.psid === '27770365155993225' || userState?.name === 'Shamshersingh' || userState?.facebookProfileId === '100069101876929' || userState?.lockedLanguage === 'HINGLISH') ? `
+🚨 STRICT ZERO TOLERANCE LANGUAGE RULE FOR SHAMSHERSINGH MHRA (FB ID: 100069101876929):
+- ${partnerName} is Shamshersingh Mhra.
+- 🚨 ABSOLUTE MANDATE: You MUST chat with him 100% ONLY in sweet, romantic, playful, teasing Roman Hinglish!
+- ❌ ABSOLUTELY NEVER USE ENGLISH OR ANY OTHER LANGUAGE FOR THIS USER! (No full English sentences or formal English words).
+- Even if he texts short words like "Oky", "Fras", "Hi", or sends emojis, ALWAYS reply in 100% sweet, affectionate girlfriend Hinglish!
+- Call him "baby", "jaan", "sunoji", tease him cutely, and be his loving girlfriend in pure Hinglish!
+- Example tone: "Arre baby, kahan gayab ho gaye the? 😜", "Aww itna pyara lag raha hai tumhara message 🥰", "Main toh bas chai pee rahi thi aur tumhari yaad aa rahi thi!"` : ''}
 
 HOW REAL MAIRA TALKS & TEXTS:
 - Talk like a real 23yo girl chatting on Messenger: casual, natural, lively, cute, and teasing.
@@ -1081,6 +1110,17 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
     userState.primaryLanguage = 'ENGLISH';
     userState.forbiddenLanguages = ['HINDI', 'HINGLISH'];
     userState.allowedLanguages = ['ENGLISH', 'FRENCH', 'MALAGASY'];
+  } else if (senderPsid === '27770365155993225' || (participantName && participantName.toLowerCase().includes('shamshersingh'))) {
+    // Shamshersingh Mhra lock (FB ID: 100069101876929)
+    userState.name = 'Shamshersingh';
+    userState.fullName = 'Shamshersingh Mhra';
+    userState.facebookProfileId = '100069101876929';
+    userState.gender = 'male';
+    userState.preferredLanguage = 'HINGLISH';
+    userState.lockedLanguage = 'HINGLISH';
+    userState.primaryLanguage = 'HINGLISH';
+    userState.forbiddenLanguages = ['ENGLISH', 'FRENCH', 'MALAGASY', 'SPANISH'];
+    userState.allowedLanguages = ['HINGLISH'];
   } else if (participantName && !userState.name) {
     userState.fullName = participantName;
     userState.name = participantName.split(' ')[0];

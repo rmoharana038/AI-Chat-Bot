@@ -54,7 +54,23 @@
     "channelSuggested": false,
     "holidayPromoted": false,
     "photoCount": 1,
-    "isNewUser": false
+    "isNewUser": false,
+    "name": "Shamshersingh",
+    "fullName": "Shamshersingh Mhra",
+    "facebookProfileId": "100069101876929",
+    "gender": "male",
+    "preferredLanguage": "HINGLISH",
+    "lockedLanguage": "HINGLISH",
+    "primaryLanguage": "HINGLISH",
+    "forbiddenLanguages": [
+      "ENGLISH",
+      "FRENCH",
+      "MALAGASY",
+      "SPANISH"
+    ],
+    "allowedLanguages": [
+      "HINGLISH"
+    ]
   },
   "28276553271966057": {
     "psid": "28276553271966057",
