@@ -82,7 +82,8 @@
     "channelSuggested": true,
     "holidayPromoted": false,
     "photoCount": 1,
-    "isNewUser": false
+    "isNewUser": false,
+    "preferredLanguage": "HINGLISH"
   },
   "28130444329897622": {
     "psid": "28130444329897622",
@@ -92,7 +93,8 @@
     "channelSuggested": false,
     "holidayPromoted": false,
     "photoCount": 0,
-    "isNewUser": true
+    "isNewUser": true,
+    "preferredLanguage": "HINGLISH"
   },
   "28379989374951138": {
     "psid": "28379989374951138",
@@ -144,7 +146,8 @@
     "channelSuggested": false,
     "holidayPromoted": false,
     "photoCount": 0,
-    "isNewUser": true
+    "isNewUser": true,
+    "preferredLanguage": "HINGLISH"
   },
   "38931373936460780": {
     "psid": "38931373936460780",
@@ -214,7 +217,8 @@
     "channelSuggested": false,
     "holidayPromoted": false,
     "photoCount": 0,
-    "isNewUser": true
+    "isNewUser": true,
+    "preferredLanguage": "HINGLISH"
   },
   "28406889215601673": {
     "psid": "28406889215601673",
@@ -274,7 +278,8 @@
     "channelSuggested": false,
     "holidayPromoted": false,
     "photoCount": 0,
-    "isNewUser": true
+    "isNewUser": true,
+    "preferredLanguage": "HINGLISH"
   },
   "28309782232016659": {
     "psid": "28309782232016659",
@@ -294,7 +299,8 @@
     "channelSuggested": false,
     "holidayPromoted": false,
     "photoCount": 0,
-    "isNewUser": true
+    "isNewUser": true,
+    "preferredLanguage": "HINGLISH"
   },
   "28317711567855484": {
     "psid": "28317711567855484",
@@ -312,7 +318,8 @@
     "channelSuggested": true,
     "holidayPromoted": false,
     "photoCount": 2,
-    "isNewUser": false
+    "isNewUser": false,
+    "preferredLanguage": "HINGLISH"
   },
   "38016123034702053": {
     "psid": "38016123034702053",
@@ -324,7 +331,8 @@
     "channelSuggested": false,
     "holidayPromoted": false,
     "photoCount": 1,
-    "isNewUser": false
+    "isNewUser": false,
+    "preferredLanguage": "HINGLISH"
   },
   "28075279992114035": {
     "psid": "28075279992114035",
@@ -336,6 +344,49 @@
     "channelSuggested": false,
     "holidayPromoted": false,
     "photoCount": 1,
-    "isNewUser": false
+    "isNewUser": false,
+    "preferredLanguage": "HINGLISH"
+  },
+  "28434591919486829": {
+    "psid": "28434591919486829",
+    "firstSeen": "2026-09-14T01:47:39.441Z",
+    "photoCount": 0,
+    "preferredLanguage": "HINGLISH"
+  },
+  "28059166150377803": {
+    "psid": "28059166150377803",
+    "firstSeen": "2026-09-14T01:47:39.442Z",
+    "photoCount": 0,
+    "preferredLanguage": "HINGLISH"
+  },
+  "38112697775040812": {
+    "psid": "38112697775040812",
+    "firstSeen": "2026-09-14T01:47:39.442Z",
+    "photoCount": 0,
+    "preferredLanguage": "HINGLISH"
+  },
+  "29403926429207177": {
+    "psid": "29403926429207177",
+    "firstSeen": "2026-09-14T01:47:39.442Z",
+    "photoCount": 0,
+    "preferredLanguage": "HINGLISH"
+  },
+  "26667358632962568": {
+    "psid": "26667358632962568",
+    "firstSeen": "2026-09-14T01:47:39.442Z",
+    "photoCount": 0,
+    "preferredLanguage": "HINGLISH"
+  },
+  "28097029689917492": {
+    "psid": "28097029689917492",
+    "firstSeen": "2026-09-14T01:47:39.442Z",
+    "photoCount": 0,
+    "preferredLanguage": "HINGLISH"
+  },
+  "28336111006008993": {
+    "psid": "28336111006008993",
+    "firstSeen": "2026-09-14T01:47:39.442Z",
+    "photoCount": 0,
+    "preferredLanguage": "HINGLISH"
   }
 }

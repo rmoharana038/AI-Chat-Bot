@@ -209,7 +209,7 @@ async function sendFbText(recipientId, text) {
 
 async function run() {
   console.log('🔍 Scanning ALL Facebook Messenger conversations for unanswered user messages...\n');
-  let convUrl = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,updated_time,messages.limit(5){id,message,attachments,shares,sticker,from,created_time}&limit=50&access_token=${encodeURIComponent(token)}`;
+  let convUrl = `${GRAPH_BASE_URL}/me/conversations?fields=id,participants,updated_time,messages.limit(3){id,message,attachments,shares,sticker,from,created_time}&limit=25&access_token=${encodeURIComponent(token)}`;
   
   const convs = [];
   while (convUrl && convs.length < 500) {

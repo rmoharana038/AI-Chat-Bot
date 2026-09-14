@@ -499,53 +499,84 @@ CRITICAL MEMORY OVERRIDE: Even if past assistant responses in the chat history w
     return getLangObject('TELUGU_ROMAN');
   }
 
-  // Check if Hinglish is strictly forbidden for this user
+  // Check if Hinglish is strictly forbidden for this user (e.g. Dash Young Sané)
   const isHinglishForbidden = Boolean(
     isDash ||
     userState?.forbiddenLanguages?.includes('HINGLISH') ||
-    userState?.primaryLanguage === 'ENGLISH' ||
-    userState?.preferredLanguage === 'ENGLISH'
+    (userState?.primaryLanguage === 'ENGLISH' && userState?.lockedLanguage === 'ENGLISH')
   );
 
-  // High-frequency distinct English dictionary
+  // Common English dictionary (excluding short shared Hindi particles: to, me, is, so, or, do, hi)
   const COMMON_ENGLISH_WORDS = new Set([
-    'i', 'me', 'my', 'myself', 'you', 'your', 'yours', 'we', 'our', 'he', 'him', 'his', 'she', 'her',
+    'i', 'my', 'myself', 'you', 'your', 'yours', 'we', 'our', 'he', 'him', 'his', 'she', 'her',
     'they', 'them', 'their', 'what', 'which', 'who', 'whom', 'this', 'that', 'these', 'those',
-    'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'doing',
-    'would', 'should', 'could', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until', 'while',
+    'am', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'does', 'did', 'doing',
+    'would', 'should', 'could', 'the', 'and', 'but', 'if', 'because', 'as', 'until', 'while',
     'of', 'at', 'by', 'for', 'with', 'about', 'between', 'into', 'through', 'during', 'before', 'after',
-    'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then',
+    'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then',
     'here', 'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most',
-    'other', 'some', 'no', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'can', 'will', 'just',
+    'other', 'some', 'not', 'only', 'own', 'same', 'than', 'too', 'very', 'can', 'will', 'just',
     'now', 'love', 'miss', 'baby', 'sweetheart', 'darling', 'honey', 'handsome', 'beautiful', 'cute',
     'photo', 'picture', 'pic', 'pics', 'selfie', 'video', 'call', 'number', 'whatsapp', 'phone',
-    'good', 'morning', 'night', 'afternoon', 'evening', 'hello', 'hi', 'hey', 'please', 'thanks', 'thank',
+    'good', 'morning', 'night', 'afternoon', 'evening', 'hello', 'hey', 'please', 'thanks', 'thank',
     'welcome', 'sorry', 'happy', 'sad', 'angry', 'smile', 'talk', 'chat', 'say', 'tell', 'sleep',
     'eat', 'food', 'tea', 'coffee', 'day', 'time', 'girl', 'boy', 'friend', 'girlfriend',
     'sweet', 'nice', 'cool', 'great', 'awesome', 'fine', 'okay', 'see', 'look', 'want', 'need', 'give', 'send'
   ]);
 
-  // Distinct Hinglish vocabulary
+  // Comprehensive colloquial Hinglish vocabulary
   const HINGLISH_WORDS = new Set([
-    'kya', 'kyu', 'kyun', 'kese', 'kaise', 'kaisi', 'kaisa', 'hai', 'hain', 'ho', 'hu', 'hoon',
-    'kar', 'karo', 'kare', 'karna', 'karte', 'karti', 'rahi', 'raha', 'rahe', 'gayi', 'gaya', 'gaye',
-    'khana', 'khaya', 'khayi', 'khaye', 'khilao', 'baat', 'baatein', 'suno', 'sunao', 'batao', 'bataiye',
-    'kahan', 'kaha', 'kidhar', 'kab', 'jab', 'tab', 'ab', 'abhi', 'kal', 'aaj', 'parso',
-    'yaar', 'meri', 'mera', 'mere', 'apna', 'apni', 'apne', 'aap', 'aapka', 'aapki', 'aapke',
-    'tum', 'tumhara', 'tumhari', 'tumhare', 'tu', 'tera', 'teri', 'tere',
-    'mujhko', 'mujhse', 'tujhko', 'tujhse', 'humara', 'humari', 'humare',
-    'theek', 'thik', 'sahi', 'galat', 'nhi', 'toh', 'bohot', 'bahut', 'thoda', 'thodi',
-    'achha', 'achi', 'acchi', 'samajh', 'samjha', 'samjhi', 'kuch',
-    'sharam', 'sharm', 'gussa', 'pyaar', 'pyar', 'sone', 'soya', 'soyi', 'uthna',
-    'jaana', 'aata', 'aati', 'dekho', 'dekha', 'dekhna',
-    'bhejo', 'bheja', 'bhejna', 'doodh', 'paani', 'chahiye',
-    'kitna', 'kitni', 'kitne', 'itna', 'itni', 'itne', 'aisa', 'aisi', 'aise', 'waisa', 'waisi', 'waise',
-    'shukriya', 'dhanyawad', 'shona', 'bacha', 'bachha', 'janu', 'janeman',
-    'chalo', 'bolo', 'bologe', 'bolna', 'bolte', 'raho', 'jaoge', 'aaoge'
+    // Question & inquiry
+    'kya', 'kyu', 'kyun', 'kyo', 'kese', 'kaise', 'kaisi', 'kaisa', 'kaiseho', 'kaisiho',
+    'kaha', 'kahan', 'kidhar', 'kab', 'jab', 'tab', 'kisko', 'kiska', 'kiski', 'kiske',
+    'kitna', 'kitni', 'kitne', 'kaun', 'kon',
+    // Pronouns & address
+    'main', 'mai', 'mei', 'mein', 'hum', 'ham', 'hame', 'hume', 'humko', 'mujhko', 'mujhe', 'mujhse',
+    'mera', 'meri', 'mere', 'tum', 'tumhe', 'tumko', 'tumse', 'tumhara', 'tumhari', 'tumhare',
+    'tu', 'tera', 'teri', 'tere', 'tujhe', 'tujhko', 'tujhse',
+    'aap', 'aapka', 'aapki', 'aapke', 'aapko', 'aapse', 'apna', 'apni', 'apne',
+    'wo', 'woh', 'unka', 'unki', 'unke', 'usne', 'isne', 'inka', 'inki', 'inke',
+    'tm', 'ap', 'bi', 'bhe',
+    // Verbs & auxiliaries
+    'hai', 'hain', 'ho', 'hu', 'hoon', 'hona', 'hoga', 'hogi', 'hoge', 'tha', 'thi', 'the',
+    'raha', 'rahi', 'rahe', 'rahega', 'rahegi', 'raho',
+    'kar', 'karo', 'kare', 'karna', 'karta', 'karti', 'karte', 'karunga', 'karungi', 'karega', 'karegi',
+    'gaya', 'gayi', 'gaye', 'gya', 'gyi', 'gye', 'ja', 'jao', 'jana', 'jaate', 'jaati', 'jaunga', 'jaungi', 'jaoge',
+    'aaya', 'aayi', 'aaye', 'aa', 'aao', 'aana', 'aata', 'aati', 'aaunga', 'aaungi', 'aaoge', 'aarahahe', 'aaraha', 'aarahe',
+    'dekh', 'dekho', 'dekha', 'dekhna', 'dekhoge', 'dekhi', 'dekhe',
+    'bhejo', 'bheja', 'bhejna', 'bheji', 'bhej', 'sendkaro',
+    'bolo', 'bolna', 'bologe', 'bolte', 'bolti', 'bola', 'boli', 'bole', 'bol',
+    'suno', 'sunao', 'sunna', 'suna', 'suni', 'sune', 'sun',
+    'batao', 'batana', 'bataiye', 'bataye', 'bata', 'btao',
+    'khana', 'khaya', 'khayi', 'khaye', 'khao', 'khilao', 'khaa',
+    'peena', 'piya', 'piyo', 'pee',
+    'sona', 'soya', 'soyi', 'soye', 'sojao', 'sogayi', 'sogaye', 'nid', 'neend',
+    'uth', 'utho', 'uthna', 'utha', 'uthi', 'uthgaye',
+    'mila', 'mili', 'mile', 'milna', 'milte', 'milenge', 'milo',
+    'lena', 'liya', 'liye', 'lo', 'lelo', 'dena', 'diya', 'diye', 'de',
+    'chalo', 'chal', 'chalega', 'chalegi', 'rehte', 'rehti', 'rehta', 'reh',
+    'samajh', 'samjha', 'samjhi', 'samjhe', 'samjho',
+    'lagta', 'lagti', 'lagte', 'laga', 'lagi', 'lage', 'lagraha', 'lagrahi',
+    // Modifiers & prepositions
+    'aur', 'ya', 'par', 'lekin', 'magar', 'bhi', 'toh', 'to', 'nhi', 'nahi', 'na', 'mat',
+    'ab', 'abhi', 'kal', 'aaj', 'parso', 'pehle', 'baad',
+    'bohot', 'bahut', 'thoda', 'thodi', 'thode', 'zyada', 'jyada', 'kam',
+    'itna', 'itni', 'itne', 'etna', 'aisa', 'aisi', 'aise', 'waisa', 'waisi', 'waise',
+    'kuch', 'koi', 'sab', 'sabhi', 'saath', 'pass', 'dur', 'andar', 'bahar',
+    // Romantic, affectionate & conversational particles
+    'yaar', 'jaan', 'jaanu', 'janeman', 'babu', 'shona', 'bacha', 'bachha',
+    'pagal', 'pagli', 'haye', 'arre', 'are', 'aare',
+    'accha', 'achha', 'acha', 'achi', 'acchi', 'ache', 'achhe', 'theek', 'thik', 'sahi', 'galat',
+    'sharam', 'sharm', 'gussa', 'pyaar', 'pyar', 'mohabat', 'mohabbat',
+    'dil', 'yaad', 'sach', 'jhooth', 'chup', 'nautanki', 'nakhre',
+    'chehra', 'chra', 'hasen', 'haseen', 'tasveer', 'photo', 'dost',
+    'shukriya', 'dhanyawad', 'alvida', 'khuda', 'hafiz', 'namaste', 'pranam',
+    'marzi', 'chaho', 'dikhao', 'sunoji', 'bhai', 'behen', 'didi', 'bhabhi',
+    'btao', 'kro', 'plz', 'hlo', 'haa', 'haan', 'hnn', 'hmm'
   ]);
 
-  // Common Hinglish grammatical phrases (very high confidence)
-  const HINGLISH_PHRASE_REGEX = /\b(kya\s+(?:kar|bata|bol|hai|hua)|kaise\s+ho|kaisi\s+ho|kaisa\s+hai|khana\s+khaya|kuch\s+nahi|suno\s+na|batao\s+na|meri\s+jaan|apna\s+khayal|baat\s+karo|so\s+gayi|uth\s+gaye|yaad\s+aa\s+rahi|miss\s+kar\s+raha|love\s+u\s+jaan|kaha\s+ho|kidhar\s+ho|kab\s+aaoge|call\s+karo)\b/i;
+  // Common Hinglish grammatical phrases
+  const HINGLISH_PHRASE_REGEX = /\b(kya\s+(?:kar|bata|bol|hai|hua|chal|baat|scene)|kaise\s+ho|kaisi\s+ho|kaisa\s+hai|kese\s+ho|khana\s+khaya|kuch\s+nahi|kuch\s+nhi|suno\s+na|batao\s+na|bolo\s+na|meri\s+jaan|apna\s+khayal|baat\s+karo|bat\s+kare|so\s+gayi|so\s+gaye|uth\s+gaye|yaad\s+aa\s+rahi|miss\s+kar|love\s+u\s+jaan|kaha\s+ho|kahan\s+ho|kidhar\s+ho|kab\s+aaoge|call\s+karo|tm\s+to|bhool\s+gayi|bhool\s+gya|bhool\s+hi|nid\s+aa|neend\s+aa|send\s+karo|pic\s+do|photo\s+bhejo|photo\s+do|marzi\s+tumri|dikhao\s+mujhe|kya\s+baat\s+hai|theek\s+hai|thik\s+hai|sahi\s+hai|acha\s+ji|achha\s+ji|hasen\s+chra|itna\s+pyar|bohot\s+pyar|love\s+you\s+too\s+jaan|jao\s+na|baad\s+me)\b/i;
 
   let englishCount = 0;
   let hinglishCount = 0;
@@ -579,7 +610,8 @@ CRITICAL MEMORY OVERRIDE: Even if past assistant responses in the chat history w
         const role = h.from?.id === PAGE_ID || h.role === 'model' ? 'model' : 'user';
         if (role === 'user' && hText && hText !== trimmed) {
           const prev = detectUserLanguage(hText, [], userState);
-          if (prev.code && prev.code !== 'ENGLISH') {
+          if (prev.code) {
+            persist(prev.code);
             return prev;
           }
         }
@@ -590,13 +622,27 @@ CRITICAL MEMORY OVERRIDE: Even if past assistant responses in the chat history w
     return getLangObject('ENGLISH');
   }
 
-  // Hinglish requires high confidence: strong phrase OR at least 2 distinct Hinglish words AND hinglishCount >= englishCount
-  if (!isHinglishForbidden && (hasHinglishPhrase || (hinglishCount >= 2 && hinglishCount >= englishCount))) {
+  // 1. High confidence Hinglish phrase
+  if (!isHinglishForbidden && hasHinglishPhrase) {
     persist('HINGLISH');
     return getLangObject('HINGLISH');
   }
 
-  // If English words are present or English count > hinglishCount -> ENGLISH
+  // 2. Clear Hinglish vocabulary (>= 1 distinct Hinglish word when no English words present, OR >= 2 Hinglish words >= englishCount)
+  if (!isHinglishForbidden && ((hinglishCount >= 1 && englishCount === 0) || (hinglishCount >= 2 && hinglishCount >= englishCount))) {
+    persist('HINGLISH');
+    return getLangObject('HINGLISH');
+  }
+
+  // 3. User's saved preference was Hinglish, keep Hinglish unless clear English sentence structure
+  if (!isHinglishForbidden && userState?.preferredLanguage === 'HINGLISH') {
+    const hasEnglishSentenceStructure = /(?:can\s+you|could\s+you|would\s+you|what\s+(?:is|are)\s+you|where\s+are\s+you|how\s+are\s+you|i\s+(?:am|will|want|need|have)|do\s+you\s+(?:have|want|know)|please\s+send\s+me)/i.test(trimmed);
+    if (!hasEnglishSentenceStructure && englishCount <= 2) {
+      return getLangObject('HINGLISH');
+    }
+  }
+
+  // 4. English words or sentences
   if (englishCount >= 1 || cleanWords.length >= 1) {
     persist('ENGLISH');
     return getLangObject('ENGLISH');
