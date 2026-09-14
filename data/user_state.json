@@ -1,4 +1,29 @@
 {
+  "28906681882262539": {
+    "psid": "28906681882262539",
+    "name": "Dash",
+    "fullName": "Dash Young Sané",
+    "facebookProfileId": "61594076574649",
+    "gender": "male",
+    "primaryLanguage": "ENGLISH",
+    "forbiddenLanguages": [
+      "HINDI",
+      "HINGLISH"
+    ],
+    "allowedLanguages": [
+      "ENGLISH",
+      "FRENCH",
+      "MALAGASY"
+    ],
+    "firstSeen": "2026-09-13T20:50:00.000Z",
+    "lastActive": "2026-09-13T21:16:43.000Z",
+    "sentPhotos": [],
+    "channelSuggested": true,
+    "holidayPromoted": false,
+    "photoCount": 0,
+    "personaMode": "default",
+    "isNewUser": false
+  },
   "28630758976561480": {
     "psid": "28630758976561480",
     "firstSeen": "2026-09-13T03:54:21.692Z",

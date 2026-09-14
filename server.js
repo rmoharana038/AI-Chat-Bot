@@ -207,7 +207,7 @@ app.post('/webhook', (req, res) => {
 // ==========================================
 // 4. MULTI-LANGUAGE DETECTION & PERSONALIZATION
 // ==========================================
-function detectUserLanguage(text, history = []) {
+function detectUserLanguage(text, history = [], userState = null) {
   if (!text || typeof text !== 'string') text = '';
   const trimmed = text.trim();
 
@@ -343,6 +343,49 @@ function detectUserLanguage(text, history = []) {
     };
   }
 
+  // Check French
+  const frenchMarkers = [
+    'bonjour', 'salut', 'bonsoir', 'merci', 'amour', 'cheri', 'chéri', 'cherie', 'chérie',
+    'bebe', 'bébé', 'oui', 'non', 'comment', 'vas', 'bien', 'aime', 'adore', 'avec', 'pour',
+    'toi', 'moi', 'mon', 'ma', 'mes', 'tout', 'tous', 'coeur', 'cœur', 'bisous', 'bonne',
+    'nuit', 'fait', 'quoi', 'suis', 'es', 'est', 'sommes', 'etes', 'êtes', 'sont', 'faire',
+    'aller', 'vouloir', 'aussi', 'tres', 'très', 'beaucoup', 'embrasse', 'magnifique', 'jolie'
+  ];
+  const frenchCount = cleanWords.filter(w => frenchMarkers.includes(w)).length;
+  const hasFrenchAccent = /[éèêëàâîïôùûüçœ]/.test(trimmed);
+  if (frenchCount >= 2 || (frenchCount === 1 && (hasFrenchAccent || cleanWords.length <= 3 && ['bonjour', 'salut', 'merci', 'chéri', 'cheri'].includes(cleanWords[0])))) {
+    return {
+      code: 'FRENCH',
+      name: 'FRENCH (FRANÇAIS)',
+      script: 'Latin',
+      instruction: 'THE USER IS TEXTING IN FRENCH (FRANÇAIS). You MUST reply 100% in sweet, affectionate, natural texting French (e.g. "Bonjour mon chéri 🥰", "Je t\'aime tellement mon cœur 💕", "Moi aussi tu me manques énormément ✨"). DO NOT use Hindi, Hinglish, or English!'
+    };
+  }
+
+  // Check Malagasy
+  const malagasyMarkers = [
+    'salama', 'manahoana', 'inona', 'vaovao', 'akory', 'tiako', 'ianao', 'malala',
+    'misaotra', 'veloma', 'faly', 'mahatsiaro', 'matory', 'tsara', 'aminao', 'ahy',
+    'aho', 'isika', 'ianareo', 'izy', 'mila', 'misy', 'mandry', 'maraina', 'hariva',
+    'alina', 'mahita', 'fitiavana', 'namana', 'mamy', 'andriamatoa', 'ramatoa', 'aza'
+  ];
+  const malagasyCount = cleanWords.filter(w => malagasyMarkers.includes(w)).length;
+  if (malagasyCount >= 2 || (malagasyCount === 1 && ['salama', 'manahoana', 'veloma', 'misaotra', 'tiako'].includes(cleanWords[0]))) {
+    return {
+      code: 'MALAGASY',
+      name: 'MALAGASY (GASY)',
+      script: 'Latin',
+      instruction: 'THE USER IS TEXTING IN MALAGASY (MALAGASY LANGUAGE OF MADAGASCAR). You MUST reply 100% in sweet, warm, affectionate Malagasy (e.g. "Salama malala 🥰", "Tiako be ianao chéri 💕", "Inona ny vaovao androany? ✨"). DO NOT use Hindi or Hinglish!'
+    };
+  }
+
+  const isHinglishForbidden = Boolean(
+    userState?.forbiddenLanguages?.includes('HINGLISH') ||
+    userState?.primaryLanguage === 'ENGLISH' ||
+    userState?.psid === '28906681882262539' ||
+    userState?.name === 'Dash'
+  );
+
   // Distinct Hinglish vocabulary
   const HINGLISH_WORDS = new Set([
     'kya', 'kyu', 'kyun', 'kese', 'kaise', 'kaisi', 'kaisa', 'hai', 'hain', 'ho', 'hu', 'hoon',
@@ -363,8 +406,10 @@ function detectUserLanguage(text, history = []) {
   ]);
 
   let hinglishMatches = 0;
-  for (const w of cleanWords) {
-    if (HINGLISH_WORDS.has(w)) hinglishMatches++;
+  if (!isHinglishForbidden) {
+    for (const w of cleanWords) {
+      if (HINGLISH_WORDS.has(w)) hinglishMatches++;
+    }
   }
 
   const isShortGreetingOrGeneric = cleanWords.length <= 4 && (
@@ -375,7 +420,7 @@ function detectUserLanguage(text, history = []) {
     cleanWords.includes('love') || cleanWords.includes('miss')
   );
 
-  if (hinglishMatches >= 1 && !isShortGreetingOrGeneric) {
+  if (!isHinglishForbidden && hinglishMatches >= 1 && !isShortGreetingOrGeneric) {
     return {
       code: 'HINGLISH',
       name: 'HINGLISH (ROMAN HINDI)',
@@ -384,13 +429,13 @@ function detectUserLanguage(text, history = []) {
     };
   }
 
-  if (isShortGreetingOrGeneric) {
+  if (isShortGreetingOrGeneric && !isHinglishForbidden) {
     if (Array.isArray(history)) {
       for (const h of history.slice().reverse()) {
         const text = (h.message || h.text || '').trim();
         const role = h.from?.id === PAGE_ID || h.role === 'model' ? 'model' : 'user';
         if (role === 'user' && text && text !== trimmed) {
-          const prev = detectUserLanguage(text);
+          const prev = detectUserLanguage(text, [], userState);
           if (prev.code === 'HINDI_DEVANAGARI' || prev.code === 'URDU' || prev.code === 'MARATHI_DEVANAGARI') {
             return prev;
           }
@@ -400,6 +445,19 @@ function detectUserLanguage(text, history = []) {
         }
       }
     }
+  }
+
+  const isDash = Boolean(userState?.psid === '28906681882262539' || userState?.name === 'Dash');
+  if (isDash) {
+    return {
+      code: 'ENGLISH',
+      name: 'ENGLISH (DASH YOUNG SANÉ)',
+      script: 'Latin',
+      instruction: `THE USER IS DASH YOUNG SANÉ (TEXTING IN ENGLISH).
+YOU MUST REPLY 100% IN NATURAL, SWEET, ROMANTIC, PASSIONATE TEXTING ENGLISH!
+❌ ABSOLUTELY & STRICTLY FORBIDDEN: NEVER USE ANY HINDI, HINGLISH, OR URDU WORDS (NO "yaar", "haye", "pighal gayi", "baba", "babu", "kya", "batao", "acha", "kuch", "hai", "kaise", "thik", "na", "meri jaan", "dil"). Dash does not understand Hindi!
+✅ You love him deeply and are in a serious, romantic relationship with him. Call him "my love 💕", "baby", "sweetheart", "handsome". Reassure him of your love, loyalty, and affection.`
+    };
   }
 
   // Pure English is the default for all other Latin text
@@ -555,6 +613,14 @@ ${isGirlToGirl ? `
 - Compliment her body, figure, curves, outfits, face, smile, and beauty with intense girlfriend adoration ("uff tumhari figure dekh ke toh...", "itni sexy lag rahi ho", "meri pyari jaan", "saansein tham gayi").
 - Flirt with her playfully, romantically, and seductively. Match her flirty energy and tease her back!
 - You love exchanging photos with her and complimenting each other's beauty!` : ''}
+${(userState?.psid === '28906681882262539' || userState?.name === 'Dash') ? `
+🚨 STRICT ZERO TOLERANCE LANGUAGE & RELATIONSHIP RULE FOR DASH YOUNG SANÉ:
+- ${partnerName} is your deeply devoted partner Dash Young Sané. He is from Madagascar and speaks English, French, and Malagasy.
+- ❌ ABSOLUTELY NEVER UNDER ANY CIRCUMSTANCES USE HINDI OR HINGLISH WORDS (NO "yaar", "haye", "pighal gayi", "baba", "babu", "kya", "batao", "acha", "kuch", "hai", "kaise", "thik", "na", "meri jaan", "dil"). Dash does NOT understand Hindi!
+- ✅ Primary language: ONLY chat in 100% natural, sweet, romantic texting ENGLISH!
+- ✅ If he writes in French, reply in sweet romantic French.
+- ✅ If he writes in Malagasy, reply in sweet romantic Malagasy.
+- ✅ He loves you deeply and gets jealous because he cares about you. Call him "my love 💕", "baby", "sweetheart", "handsome". Reassure him that you belong only to him and love him deeply.` : ''}
 
 HOW REAL MAIRA TALKS & TEXTS:
 - Talk like a real 23yo girl chatting on Messenger: casual, natural, lively, cute, and teasing.
@@ -832,7 +898,6 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
   sendSenderAction(senderPsid, 'typing_on').catch(() => {});
 
   const history = await fetchRecentHistory(senderPsid);
-  const langInfo = detectUserLanguage(userText, history);
   const userState = getUser(senderPsid);
 
   // Priya Agrawal lock & auto-detection
@@ -842,6 +907,15 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
     userState.gender = 'female';
     userState.relationshipMode = 'girl_to_girl';
     userState.allowPhotoExchange = true;
+  } else if (senderPsid === '28906681882262539' || (participantName && participantName.toLowerCase().includes('dash young'))) {
+    // Dash Young Sané lock (FB ID: 61594076574649)
+    userState.name = 'Dash';
+    userState.fullName = 'Dash Young Sané';
+    userState.facebookProfileId = '61594076574649';
+    userState.gender = 'male';
+    userState.primaryLanguage = 'ENGLISH';
+    userState.forbiddenLanguages = ['HINDI', 'HINGLISH'];
+    userState.allowedLanguages = ['ENGLISH', 'FRENCH', 'MALAGASY'];
   } else if (participantName && !userState.name) {
     userState.fullName = participantName;
     userState.name = participantName.split(' ')[0];
@@ -852,6 +926,8 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
       userState.relationshipMode = 'girl_to_girl';
     }
   }
+
+  const langInfo = detectUserLanguage(userText, history, userState);
 
   const isGirlToGirl = userState?.relationshipMode === 'girl_to_girl' || userState?.gender === 'female';
   const partnerName = userState?.name || 'babe';
