@@ -1474,21 +1474,38 @@ process.on('unhandledRejection', (reason) => {
   console.error('[Unhandled Rejection]:', reason?.message || reason);
 });
 
-app.listen(PORT, () => {
-  console.log('\n=============================================================');
-  console.log(` 💖 Maira Dash Facebook AI Girlfriend Server (Render 24/7)`);
-  console.log(` 🚀 Server running on port: ${PORT}`);
-  console.log(` 🩺 Health Check URL:       http://localhost:${PORT}/health`);
-  console.log(` 🔗 Meta Webhook URL:       http://localhost:${PORT}/webhook`);
-  console.log('=============================================================\n');
+const isEntrypoint = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 
-  if (pageAccessToken) {
-    ensurePageSubscribed();
-    setInterval(ensurePageSubscribed, 30 * 60 * 1000); // Refresh subscription every 30 mins
-  }
+if (isEntrypoint) {
+  app.listen(PORT, () => {
+    console.log('\n=============================================================');
+    console.log(` 💖 Maira Dash Facebook AI Girlfriend Server (Render 24/7)`);
+    console.log(` 🚀 Server running on port: ${PORT}`);
+    console.log(` 🩺 Health Check URL:       http://localhost:${PORT}/health`);
+    console.log(` 🔗 Meta Webhook URL:       http://localhost:${PORT}/webhook`);
+    console.log('=============================================================\n');
 
-  if (pageAccessToken && apiKeys.length > 0) {
-    console.log('🚀 Failsafe Auto-Reply Watcher started (continuous non-blocking poll)...');
-    runAutoReplyWatcher();
-  }
-});
+    if (pageAccessToken) {
+      ensurePageSubscribed();
+      setInterval(ensurePageSubscribed, 30 * 60 * 1000); // Refresh subscription every 30 mins
+    }
+
+    if (pageAccessToken && apiKeys.length > 0) {
+      console.log('🚀 Failsafe Auto-Reply Watcher started (continuous non-blocking poll)...');
+      runAutoReplyWatcher();
+    }
+  });
+}
+
+export {
+  detectUserLanguage,
+  buildGirlfriendPrompt,
+  cleanGirlfriendReply,
+  contextualizeUserMessage,
+  formatGeminiContents,
+  isPhotoRequest,
+  isStickerOrEmoji,
+  callGemini,
+  handleIncomingMessage
+};
+
