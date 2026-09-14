@@ -191,6 +191,11 @@ app.post('/webhook', (req, res) => {
         const shareAtt = attachments.find(a => a.type === 'fallback' || a.type === 'share' || a.payload?.url);
         if (shareAtt?.payload?.url) {
           userText = shareAtt.payload.url;
+        } else {
+          const audioAtt = attachments.find(a => a.type === 'audio' || (a.mime_type || '').startsWith('audio/'));
+          if (audioAtt) {
+            userText = '(Sent a voice note / audio message)';
+          }
         }
       }
 
@@ -747,6 +752,9 @@ function isTravelQuery(text) {
 
 function contextualizeUserMessage(text) {
   if (!text) return '(Empty message)';
+  if (text.includes('voice note') || text.includes('audio message')) {
+    return '(The user sent you a voice note/audio recording. React warmly and sweetly like a real girlfriend saying you are listening to their sweet voice!)';
+  }
   if (text.includes('instagram.com') || text.includes('tiktok.com') || text.includes('youtube.com') || text.includes('http')) {
     return '(The user sent a video/reel link. React playfully like a real girlfriend.)';
   }
@@ -1155,6 +1163,12 @@ async function runAutoReplyWatcher() {
             let rawText = (latest.message || '').trim();
             if (!rawText && latest.shares?.data?.[0]?.link) {
               rawText = latest.shares.data[0].link;
+            }
+            if (!rawText) {
+              const audioAtt = attachments.find(a => (a.mime_type || '').startsWith('audio/'));
+              if (audioAtt) {
+                rawText = '(Sent a voice note / audio message)';
+              }
             }
             if (!rawText && hasSticker) {
               const stickerAtt = attachments.find(a => a.image_data?.sticker_id || a.id?.startsWith('sticker_'));
