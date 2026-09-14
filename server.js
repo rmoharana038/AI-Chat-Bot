@@ -53,6 +53,7 @@ if (fs.existsSync(distDir)) {
 const PAGE_ID = '640383429165346';
 const GRAPH_BASE_URL = 'https://graph.facebook.com/v21.0';
 const pageAccessToken = process.env.FB_PAGE_ACCESS_TOKEN;
+
 const rawKeys = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
 const apiKeys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
 const verifyToken = process.env.FB_VERIFY_TOKEN || 'my_secure_fb_webhook_verify_token_12345';
@@ -60,6 +61,7 @@ const modelName = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
 
 const MODELS_TO_TRY = [
   'gemini-3.1-flash-lite',
+  'gemini-flash-lite-latest',
   'gemini-3-flash-preview',
   'gemini-3.1-flash-lite-preview',
   'gemini-flash-latest',

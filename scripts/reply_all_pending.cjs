@@ -20,7 +20,7 @@ const apiKeys = rawKeys.split(',').map(k => k.trim()).filter(Boolean);
 
 const PAGE_ID = '640383429165346';
 const GRAPH_BASE_URL = 'https://graph.facebook.com/v21.0';
-const MODELS_TO_TRY = ['gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-3.5-flash'];
+const MODELS_TO_TRY = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-flash-latest'];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
