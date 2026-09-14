@@ -63,6 +63,7 @@ export function getUser(psid) {
       holidayPromoted: false,
       photoCount: 0,
       personaMode: 'default',
+      preferredLanguage: null,
       isNewUser: true
     };
     scheduleSave();
@@ -104,6 +105,15 @@ export function setUserPersonaMode(psid, mode = 'default') {
   const user = getUser(psid);
   if (!user) return null;
   user.personaMode = mode;
+  user.lastActive = new Date().toISOString();
+  scheduleSave();
+  return user;
+}
+
+export function setUserPreferredLanguage(psid, langCode) {
+  const user = getUser(psid);
+  if (!user || !langCode) return null;
+  user.preferredLanguage = langCode;
   user.lastActive = new Date().toISOString();
   scheduleSave();
   return user;
