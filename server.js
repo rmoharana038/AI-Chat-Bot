@@ -1194,7 +1194,7 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
   }
   const activePersona = userState.personaMode || 'default';
 
-  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code}) | Partner: ${partnerName} (G2G: ${isGirlToGirl}) | Persona: ${activePersona.toUpperCase()} | Has Image: ${Boolean(incomingImageUrl)} | Photos Sent: ${userState.sentPhotos.length}`);
+  console.log(`🌐 [Language Detected for ${senderPsid}]: ${langInfo.name} (${langInfo.code}) | Partner: ${partnerName} (G2G: ${isGirlToGirl}) | Persona: ${activePersona.toUpperCase()} | Has Image: ${Boolean(incomingImageUrl)} | Photos Sent: ${(userState?.sentPhotos || []).length}`);
 
   // 1. Check if user sent a photo (Multimodal Visual Analysis)
   if (incomingImageUrl) {
@@ -1257,7 +1257,7 @@ async function handleIncomingMessage(senderPsid, userText, host = '', incomingIm
       const picked = unsent[Math.floor(Math.random() * unsent.length)];
       recordSentPhoto(senderPsid, picked);
       photoPath = `/photos/${picked}`;
-      console.log(`📸 [Stored Photo] Sent "${picked}" to ${senderPsid} (${userState.sentPhotos.length}/${storedPhotos.length})`);
+      console.log(`📸 [Stored Photo] Sent "${picked}" to ${senderPsid} (${(userState?.sentPhotos || []).length}/${storedPhotos.length})`);
     } else {
       // All stored photos have been sent! Generate with Google Gemini using reference face
       console.log(`✨ [Stored Photos Exhausted for ${senderPsid}] Generating new photo with reference face...`);

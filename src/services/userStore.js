@@ -67,10 +67,12 @@ export function getUser(psid) {
       isNewUser: true
     };
     scheduleSave();
-  } else if (!stateCache[id].personaMode) {
-    stateCache[id].personaMode = 'default';
   }
-  return stateCache[id];
+  const user = stateCache[id];
+  if (!Array.isArray(user.sentPhotos)) user.sentPhotos = [];
+  if (typeof user.photoCount !== 'number') user.photoCount = user.sentPhotos.length;
+  if (!user.personaMode) user.personaMode = 'default';
+  return user;
 }
 
 export function recordSentPhoto(psid, photoFilename) {
